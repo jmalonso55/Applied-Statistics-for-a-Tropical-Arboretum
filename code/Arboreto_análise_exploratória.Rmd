@@ -1,0 +1,737 @@
+---
+title: "Exploratory and Descriptive Statistics"
+author: "Jorge Alonso"
+date: "2026-05-19"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    code_folding: show
+    self_contained: true
+---
+
+# 1. Preparing
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 7,
+  fig.height = 5,
+  dpi = 300)
+```
+
+## 1.1. Loading packages and data
+
+```{r, message = FALSE}
+# Loading packages
+library(tidyverse)
+library(skimr)
+library(stringr)
+library(stringi)
+library(DescTools)
+library(moments)
+library(treemapify)
+```
+
+
+```{r, message = FALSE}
+# Cleaning memory
+rm(list=ls(all=TRUE))
+gc()
+```
+
+
+```{r}
+# Database link
+raw_url <- "https://raw.githubusercontent.com/jmalonso55/Applied-Statistics-for-a-Tropical-Arboretum/refs/heads/main/data/raw_data.csv"
+```
+
+
+```{r}
+# Loading data
+data <- read.csv(raw_url, sep = ",")
+
+# Checking
+summary(data)
+```
+
+```{r}
+# Checking the data structure
+glimpse(data)
+```
+
+```{r}
+# Another way to resume data
+skim(data)
+```
+
+
+```{r}
+# Checking the first lines
+head(data, 10)
+```
+
+
+## 1.2. Themes and functions
+
+```{r}
+# Estabelecendo função para o coeficiente de variação
+var_coef <- function(x) {
+  (sd(x, na.rm = T)/mean(x, na.rm = T)) * 100}
+```
+
+
+```{r}
+# Plot basic theme
+tema <- theme(text = element_text(family = "serif", size = 10), 
+      panel.background = element_rect(fill = "grey97"),
+      panel.grid.major.y = element_line(color = "grey85", linetype = "dashed"))
+```
+
+# 2. Preprocessing the data
+
+```{r}
+# Recoding canteiros
+
+# Type conversion
+data$seção <- as.numeric(data$seção)
+
+# Adding new variable
+data$sec_cant <- paste0(round(data$seção, 0), data$canteiro)
+```
+
+
+```{r}
+# Splitting taxonomic information
+data <- data %>%
+  mutate(taxon = as.character(taxon),
+    taxon = str_squish(taxon),
+    familia = str_extract(taxon, "^\\s*[A-Z-]+") |> str_trim(),
+    resto = str_remove(taxon, "^\\s*[A-Z-]+\\s*"),
+    genero = if_else(resto == "", NA_character_, word(resto, 1)),
+    especie = if_else(str_detect(word(resto, 2), "^[a-z][a-z-]*$"), word(resto, 2), NA_character_),
+    autor = case_when(is.na(genero) ~ NA_character_, is.na(especie) ~ str_remove(resto, paste0("^", genero, "\\s*")), TRUE ~ str_remove(resto, paste0("^", genero, "\\s+", especie, "\\s*"))),
+    autor = na_if(autor, "")) %>%
+  select(-resto)
+```
+
+
+```{r}
+# Adding basal area
+data <- data %>%
+  mutate(area_basal = (pi * (dap / 2)^2) / 10000)
+```
+
+
+```{r}
+# Checking habito
+unique(data$habito)
+```
+
+```{r}
+# Cleaning habito
+data <- data %>%
+  mutate(habito_original = habito,
+    habito_limpo = habito %>%
+      str_squish() %>%
+      str_to_lower() %>%
+      stri_trans_general("Latin-ASCII"),
+    habito_pad = case_when(
+      habito_limpo == "" ~ NA_character_,
+      
+      habito_limpo %in% c("arvore", "arboreo", "arborea, heliofila", "parvore") ~ "Tree",
+      
+      habito_limpo %in% c("palmeira", "plameira", "palmera", "palmeita") ~ "Palm",
+      
+      habito_limpo %in% c("arbusto", "arbustivo", "arbustiva, terrestre, ciofila") ~ "Shrub",
+      
+      habito_limpo %in% c("erva", "herbacea", "erva rizomatosa", "herbacea, terrestre, semi-ciofila", "herbacea, terrestre, heliofila") ~ "Herb",
+      
+      habito_limpo %in% c("trepadeira", "trepadeira com espinho", "cipo", "escandente", "arbusto voluvel", "arbusto escandente") ~ "Climber",
+      
+      habito_limpo %in% c("arbusto, trepadeira", "arbusto/trepadeira", "herbacea, trepadeira", "subarbusto") ~ "Climber/shrub or herb",
+      
+      habito_limpo %in% c("arbusto, arvore", "arbusto ou arvore", "arvoreta") ~ "Shrub/tree",
+      
+      habito_limpo %in% c("bambu") ~ "Bamboo",
+      
+      habito_limpo %in% c("cespitosa", "moita") ~ "Clump-forming",
+      
+      habito_limpo %in% c("aquatica") ~ "Aquatic",
+      
+      habito_limpo %in% c("pteridofita") ~ "Pteridophyte",
+      
+      habito_limpo %in% c("epifita") ~ "Epiphyte",
+      
+      TRUE ~ "Check"))
+```
+
+```{r}
+unique(data$habito_pad)
+```
+
+## 2.1. Processing bifurcated trees
+
+### 2.1.1. Selection single stem
+
+```{r}
+# Filtering trees with a single stem
+data_fuste_un <- data %>%
+  select(sec_cant, tombo, familia, genero, especie, habito_pad, altura, cap, dap, densidade, area_basal, obs) %>%
+  filter(!is.na(altura)) %>% 
+  group_by(tombo) %>%
+    filter(n() == 1) %>%
+    ungroup()
+```
+
+
+```{r}
+# Adding stem count and bifurcation variables
+data_fuste_un$n_fuste <- 1
+data_fuste_un$bifurcada <- 0
+```
+
+### 2.1.2. Processing bifurcated
+
+```{r}
+# Filtering bifurcated trees
+data_bifurcada <- data %>%
+  select(sec_cant, tombo, familia, genero, especie, habito_pad, altura, cap, dap, area_basal, densidade, obs) %>%
+  filter(!is.na(altura)) %>% 
+  group_by(tombo) %>%
+    filter(n() != 1) %>%
+    ungroup()
+```
+
+
+```{r}
+# Counting stems
+n_fuste_bif <- data_bifurcada %>%
+  count(tombo)
+```
+
+
+```{r}
+# Calculating equivalent DBH
+data_bifurcada_eq <- data_bifurcada %>%
+  group_by(tombo) %>%
+  mutate(dap = sqrt(sum(dap^2)), area_basal = sum(area_basal)) %>%
+  filter(altura == max(altura)) %>%
+  slice(1) %>%
+  ungroup()
+```
+
+```{r}
+# Adding stem count and bifurcation variables
+data_bifurcada_eq$n_fuste <- n_fuste_bif$n
+data_bifurcada_eq$bifurcada <- 1
+```
+
+### 2.1.3. Merging the data
+
+```{r}
+# Merging
+data_trab <- bind_rows(data_fuste_un, data_bifurcada_eq) %>% 
+  arrange(tombo)
+```
+
+
+```{r}
+# Creating logical variable for bifurcated
+data_trab <- data_trab %>% 
+   mutate(bifurcated = factor(bifurcada, levels = c(0, 1), labels = c("No", "Yes")))
+```
+
+
+```{r}
+# Checking work data
+skim(data_trab)
+```
+
+
+## 2.2. Detecting outliers
+
+```{r}
+# Scatter plot
+ggplot(data_trab, aes(x = dap, y = altura)) +
+  geom_point() +
+  theme_classic() +
+  scale_x_continuous(breaks = c(25, 50, 75, 100, 125, 150, 175, 200, 225)) +
+  scale_y_continuous(breaks = c(5, 10, 15, 20, 25, 30, 35, 40, 45)) +
+  labs(x = "Diameter at breast height (cm)", y = "Tree total height (m)") +
+  tema +
+  theme(panel.grid.major.x = element_line(color = "grey85", linetype = "dashed"))
+```
+
+
+```{r}
+# Calculating slenderness
+data_trab <- data_trab %>% 
+  mutate(rel_hd = altura/dap)
+```
+
+
+```{r}
+# Slenderness histogram
+ggplot(data_trab, aes(x = rel_hd)) +
+  geom_histogram(bins = 30) +
+  labs(y = "Count", x = "Slenderness") +
+  theme_classic() +
+  tema
+```
+
+```{r}
+# Slenderness boxplot
+ggplot(data_trab, aes(y = rel_hd, x = "")) +
+  geom_jitter(color = "darkblue", alpha = 0.15, width = 0.15, height = 0.05, size = 0.5) +
+  geom_boxplot(width = 0.25, fill = NA) +
+  labs(y = "Slenderness", x = "") +
+  theme_classic() +
+  tema
+```
+
+
+
+```{r}
+# qqplot
+qqnorm(data_trab$rel_hd)
+qqline(data_trab$rel_hd)
+```
+
+
+```{r}
+# 5% most extreme observations
+limites <- quantile(data_trab$rel_hd, c(0.025, 0.975), na.rm = TRUE)
+
+# Adding a variable to identify
+data_trab <- data_trab %>% 
+  mutate(outlier_rel_hd = rel_hd < limites[1] | rel_hd > limites[2])
+```
+
+
+```{r}
+# Scatter plot again
+ggplot(data_trab, aes(x = dap, y = altura, color = outlier_rel_hd)) +
+  geom_point() +
+  theme_classic() +
+  scale_x_continuous(breaks = c(25, 50, 75, 100, 125, 150, 175, 200, 225)) +
+  scale_y_continuous(breaks = c(5, 10, 15, 20, 25, 30, 35, 40, 45)) +
+  labs(x = "Diameter at breast height (cm)", y = "Tree total height (m)") +
+  tema +
+  theme(panel.grid.major.x = element_line(color = "grey85", linetype = "dashed"))
+```
+
+
+# 3. Descriptive statistics
+
+## 3.1. Frequency distribution table
+
+### 3.1.1. Qualitative variable (family)
+
+```{r}
+# Creating a frequency table by family
+familia <- data_trab %>% 
+  filter(!is.na(familia)) %>% 
+  count(familia, name = "Freq_obs") %>% 
+  arrange(desc(Freq_obs))
+
+# Checking
+head(familia, 5)
+```
+
+```{r}
+# Calcular a frequência relativa e acumulada
+familia <- familia %>%
+  mutate(Fre_rel = Freq_obs / sum(Freq_obs),
+    Freq_acum_obs = cumsum(Freq_obs),
+    Freq_acum_rel = cumsum(Fre_rel))
+
+# Adicionar linha de total
+familia <- familia %>%
+  bind_rows(summarise(., family = "Total", 
+                      Freq_obs = sum(Freq_obs), 
+                      Fre_rel = sum(Fre_rel), 
+                      Freq_acum_obs = sum(Freq_obs), 
+                      Freq_acum_rel = 1))
+
+# Visualizar as 20 primeiras linhas da tabela
+head(familia, 10)
+```
+
+
+```{r}
+# Table visualization
+ggplot(head(familia, 20), aes(x = Freq_obs, y = reorder(familia, Freq_obs))) +
+  geom_col(fill = "#A8D0E6") +
+  labs(y = "Family", x = "Observed frequency") +
+  scale_x_continuous(expand = c(0, 0)) +
+  theme_classic()
+```
+
+
+### 3.1.2. Discrete quantitative variable (number of stems)
+
+```{r}
+# Creating a frequency table by number of stems
+nfuste <- data_trab %>% 
+  count(n_fuste, name = "Freq_obs") %>% 
+  arrange(desc(Freq_obs))
+
+# Checking
+head(nfuste, 5)
+```
+
+
+```{r}
+# Calcular a frequência relativa e acumulada
+nfuste <- nfuste %>%
+  mutate(Freq_rel = Freq_obs / sum(Freq_obs),
+    Freq_acum_obs = cumsum(Freq_obs),
+    Freq_acum_rel = cumsum(Freq_rel),
+    n_fuste = as.character(n_fuste)) 
+
+# Checking
+nfuste
+```
+
+```{r}
+# Table visualization
+nfuste %>%
+  mutate(n_fuste = as.integer(as.character(n_fuste)),
+    n_fuste = factor(n_fuste, levels = rev(sort(unique(n_fuste))))) %>%
+  ggplot(aes(x = Freq_obs, y = n_fuste)) +
+  geom_col(fill = "#A8D0E6") +
+  labs(y = "Number of stems", x = "Observed frequency") +
+  scale_x_continuous(expand = c(0, 0)) +
+  theme_classic()
+```
+
+
+### 3.1.3. Continuous quantitative variable (slenderness)
+
+```{r}
+# Definir classes de altura
+data_trab <- data_trab %>%
+    mutate(classe_sle = cut(rel_hd, breaks = 10))
+
+# Calcular as frequências para cada classe de dap
+tab_sle <- data_trab %>%
+  count(classe_sle, name = "Freq_obs") %>%
+  mutate(Fre_rel = Freq_obs / sum(Freq_obs),
+    Freq_acum_obs = cumsum(Freq_obs),
+    Freq_acum_rel = cumsum(Fre_rel))
+
+tab_sle <- tab_sle %>%
+  bind_rows(summarise(., classe_sle = "Total",
+                      Freq_obs = sum(Freq_obs),
+                      Fre_rel = sum(Fre_rel),
+                      Freq_acum_obs = sum(Freq_obs),
+                      Freq_acum_rel = 1))
+
+# Visualizar a tabela de frequência da temperatura
+tab_sle
+```
+
+```{r}
+classes <- c(0.000, 0.229, 0.437, 0.644, 0.851, 1.060, 1.270, 1.470, 1.680, 1.89, 2.100)
+```
+
+
+```{r}
+# Table visualization
+  ggplot(data_trab, aes(x = rel_hd)) +
+  geom_histogram(bins = 10, fill = "#A8D0E6", color = "black", breaks = classes) +
+  labs(x = "Slenderness", y = "Observed frequency") +
+  scale_y_continuous(expand = c(0, 0)) +
+  scale_x_continuous(breaks = classes) +
+  theme_classic()
+```
+
+
+## 3.2. Bivariate analysis
+
+### 3.2.1. Qualitative x quantitative
+
+```{r}
+data_trab %>% 
+  group_by(bifurcated) %>% 
+  summarise(Mean = mean(altura), Deviation = sd(altura)) %>% 
+  arrange(desc(Mean))
+```
+
+```{r}
+# Observando em um gráfico
+  ggplot(data_trab, aes(x = bifurcated, y = altura)) +
+  stat_summary(fun.data = mean_sdl, size = 0.5, linewidth = 0.5, fun.args = list(mult = 1), color = "gray35") +
+  stat_summary(fun = mean, geom = "text", aes(label = sprintf("%.2f", after_stat((y)))), position = position_nudge(x = 0.25), size = 3, color = "gray25") +
+  labs(y = "Height (m)", x = "Bifurcated") +
+  scale_y_continuous(breaks = c(0, 5, 10, 15, 20, 25), limits = c(0, NA)) +
+  theme_classic() +
+  tema
+```
+
+
+### 3.2.2. Qualitativa com qualitativa
+
+
+```{r}
+# Tabela de contingência
+tab_familia <- table(data_trab$familia, data_trab$bifurcated)
+
+# Observando
+tab_familia
+```
+
+
+```{r}
+# Tabela de contingência para as 10 mais frequentes
+filtro_familia <- unique(head(familia$familia, 10))
+
+# Filtrando
+familia_filtro <- data_trab %>% 
+  filter(familia %in% filtro_familia)
+
+# Tabelando
+familia_10 <- 
+table(familia_filtro$familia, familia_filtro$bifurcated)
+
+# Observando
+addmargins(familia_10)
+```
+
+```{r}
+# Realizando o teste
+teste_fam <- chisq.test(familia_10)
+
+# Visualizando os valores esperados
+round(addmargins(teste_fam$expected), 0)
+```
+
+```{r}
+# Resultado do teste
+teste_fam
+```
+
+
+```{r}
+# Visualizing the table
+mosaicplot(familia_10, main = "", color = c("darkred", "darkblue"), las = 1, cex.axis = 0.6, ylab = "Family", xlab = "Stem condition", dir = c("h", "v"), off = c(15, 3))
+```
+
+
+
+```{r}
+# Coeficiente de contingência
+ContCoef(familia_10)
+```
+
+```{r}
+# Abundância de indivíduos por gênero dentro das 10 principais famílias
+abundancia_generos <- data_trab %>%
+  filter(
+    familia %in% filtro_familia,
+    !is.na(genero),
+    genero != ""
+  ) %>%
+  count(familia, genero, name = "abundancia") %>%
+  arrange(familia, desc(abundancia))
+
+abundancia_generos
+```
+
+
+```{r}
+# Table visualization
+ggplot(abundancia_generos, aes(area = abundancia, fill = familia, subgroup = familia, label = genero)
+) +
+  geom_treemap(color = "white") +
+  geom_treemap_subgroup_border(color = "black", linewidth = 0.7) +
+  geom_treemap_subgroup_text(place = "centre", grow = TRUE, alpha = 0.6, color = "black", fontface = "bold") +
+  geom_treemap_text(color = "black", place = "centre", reflow = TRUE, size = 8) +
+  labs(fill = "Family") +
+  theme(legend.position = "none",
+    plot.title = element_text(size = 14, face = "bold"))
+```
+
+
+### 3.2.3. Quantitativa com quantitativa
+
+```{r}
+# Correlação entre variáveis alométricas
+with(data_trab, cor.test(altura, dap))
+```
+
+
+```{r}
+# Visualização gráfica
+ggplot(data_trab, aes(x = dap, y = altura)) +
+  geom_jitter(width = 0.025, alpha = 0.6) +
+  labs(x = "DBH (cm)", y = "Height (m)") +
+  theme_classic() +
+  tema
+```
+
+
+### 3.2.4. Combinando mais variáveis para explorar a base de dados
+
+```{r}
+# Visualização gráfica alternativa
+ggplot(data_trab, aes(x = dap, y = altura, color = bifurcated)) +
+  geom_jitter(width = 0.025, alpha = 0.6) +
+  labs(x = "DBH (cm)", y = "Height (m)") +
+  theme_classic() +
+  tema
+```
+
+
+```{r}
+# Visualização gráfica alternativa
+ggplot(data_trab, aes(x = dap, y = altura, color = bifurcated)) +
+  geom_jitter(width = 0.025, alpha = 0.6) +
+  labs(x = "DBH (cm)", y = "Height (m)") +
+  facet_grid(~bifurcated) +
+  theme_classic() +
+  tema
+```
+
+```{r}
+# Visualização gráfica alternativa
+ggplot(data_trab, aes(x = dap, y = altura, color = classe_sle)) +
+  geom_jitter(width = 0.025, alpha = 0.6) +
+  labs(x = "DBH (cm)", y = "Height (m)") +
+  theme_classic() +
+  tema
+```
+
+
+```{r}
+# Visualização gráfica alternativa
+ggplot(data_trab, aes(x = dap, y = altura, color = classe_sle)) +
+  geom_jitter(width = 0.025, alpha = 0.6) +
+  labs(x = "DBH (cm)", y = "Height (m)") +
+  facet_wrap(~classe_sle) +
+  theme_classic() +
+  tema
+```
+
+
+## 3.3. Medidas resumo
+
+### 3.3.1. Tendência central
+
+```{r}
+# Médias de variáveis numéricas
+data_trab %>%
+  filter(familia %in% filtro_familia) %>% 
+  group_by(familia) %>% 
+  summarise(across(c(altura, dap, densidade, n_fuste, rel_hd), mean))
+```
+
+```{r}
+# Comparando média e mediana
+data_trab %>%
+  filter(familia %in% filtro_familia) %>% 
+  group_by(familia) %>% 
+  summarise(dbh_mean = mean(dap), dbh_median = median(dap))
+```
+
+
+### 3.3.2. Dispersão
+
+```{r}
+# Média, desvio padrão e coeficiente de variação
+data_trab %>%
+  filter(familia %in% filtro_familia) %>% 
+  group_by(familia) %>% 
+  summarise(alt_media = mean(altura), alt_dp = sd(altura), alt_cv = var_coef(altura))
+```
+
+```{r}
+# Média, desvio padrão e coeficiente de variação
+data_trab %>%
+  group_by(classe_sle) %>% 
+  summarise(alt_media = mean(altura), alt_dp = sd(altura), alt_cv = var_coef(altura))
+```
+
+### 3.3.3. Medidas de posição relativa
+
+```{r}
+# Quartis
+quantile(data_trab$rel_hd)
+```
+
+```{r}
+# Decis
+quantile(data_trab$rel_hd, probs = c(0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1))
+```
+
+```{r}
+# Percentis
+quantile(data_trab$rel_hd, probs = c(0.01, 0.05, 0.95, 0.99))
+```
+
+
+```{r}
+# Boxplot
+data_trab %>%
+  filter(familia %in% filtro_familia) %>% 
+  ggplot(aes(x = rel_hd, y = familia)) +
+  geom_boxplot() +
+  theme_classic()
+```
+
+### 3.3.4. Medidas de forma
+
+```{r}
+# Assimetria
+skewness(data_trab$dap)
+```
+
+
+```{r}
+# Curtose
+kurtosis(data_trab$dap)
+```
+
+
+```{r}
+# Histograma
+ggplot(data = data_trab, aes(x = dap)) +
+  geom_histogram(bins = 30, fill = "#A8D0E6", color = "black") +
+  labs(x = "DAP (cm)", y = "Frequência observada") +
+  scale_y_continuous(expand = c(0, 0)) +
+  theme_classic()
+```
+
+
+## 3.4. Perguntas
+
+1) Como vocês estabeleceriam classes de altura, DAP, esbeltez e área basal que sejam mais interpretáveis ou funcionais?
+
+2) Considerando classes de altura e DAP/área basal, como vocês avaliam a estrutura vetical / horizontal do arboreto?
+
+3) Avaliem abundância por família em comparação com área basal total por família. Qual o resultado?
+
+4) Avaliem dentro de famílias chave quais espécies são mais abundantes e quais mais contribuem para a área basal. Qual o resultado?
+
+5) Vejam a tabela abaixo e avaliem que outras análises poderiam ser feitas para melhor compreensão da riqueza no arboreto.
+
+```{r}
+# Abundância de indivíduos por gênero dentro das 10 principais famílias
+abundancia_generos <- data_trab %>%
+  filter(
+    familia %in% filtro_familia,
+    !is.na(genero),
+    genero != ""
+  ) %>%
+  count(familia, genero, name = "abundancia") %>%
+  arrange(familia, desc(abundancia))
+
+abundancia_generos
+```
+
+
+
