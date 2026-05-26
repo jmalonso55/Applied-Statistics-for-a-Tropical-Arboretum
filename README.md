@@ -19,5 +19,6 @@ arvore %>%
   )
 
 - Excluindo plantas que não são árvores
+
 arvore <- arvore %>% 
   filter(!familia %in% c("C", "STRELITZIACEAE", "PANDANACEAE"))
