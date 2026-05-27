@@ -1,0 +1,246 @@
+---
+title: "Arboreto_exemplos_probabilidade"
+author: "Jorge Alonso"
+date: "2026-05-21"
+output: html_document
+---
+
+# 1. Preparing
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 7,
+  fig.height = 5,
+  dpi = 300)
+```
+
+## 1.1. Loading packages and data
+
+```{r, message = FALSE}
+# Loading packages
+library(tidyverse)
+```
+
+
+```{r, message = FALSE}
+# Cleaning memory
+rm(list=ls(all=TRUE))
+gc()
+```
+
+
+```{r}
+# Database link
+processed_url <- "https://raw.githubusercontent.com/jmalonso55/Applied-Statistics-for-a-Tropical-Arboretum/refs/heads/main/data/processed_data.csv"
+```
+
+
+```{r}
+# Loading data
+data_trab <- read.csv(processed_url, sep = ",")
+
+# Checking
+summary(data_trab)
+```
+
+
+# 2. Probability examples
+
+Se escolhermos ao acaso um indivíduo do arboreto, o que podemos dizer probabilisticamente sobre sua família, bifurcação ou DAP?
+
+```{r}
+# Amostrando um indivíduo aleatoriamente
+sample_n(data_trab, 1)
+```
+
+
+```{r}
+# If a plant is randomly selected in the arboretum, what is the probability that it is bifurcated?
+total <- nrow(data_trab)
+bif <- nrow(subset(data_trab, bifurcada == 1))
+
+p_evA <- bif/total
+p_evA
+```
+
+```{r}
+# Evento complementar
+p_evAc <- 1 - p_evA
+
+p_evAc
+```
+
+
+```{r}
+# The elegant way
+data_trab %>%
+  summarise(p_bifurcada = mean(bifurcada == 1, na.rm = TRUE))
+```
+
+
+```{r}
+# Qual a probabilidade de ser palmeira?
+p_evB <- data_trab %>%
+  filter(!is.na(habito_pad), !is.na(dap)) %>%
+  summarise(p_palmeira = mean(habito_pad == "Palm")) %>% 
+  pull()
+
+p_evB
+```
+
+```{r}
+# Qual a probabilidade de ter o DAP maior ou igual a 70 cm?
+p_evC <- data_trab %>%
+  filter(!is.na(habito_pad), !is.na(dap)) %>%
+  summarise(p_dap70 = mean(dap >= 70)) %>% 
+  pull()
+
+p_evC
+```
+
+
+```{r}
+# Evento interseção: Qual a probabilidade de ser palmeira e ter o dap maior ou igual a 70?
+p_B_inter_C <- data_trab %>%
+  filter(!is.na(habito_pad), !is.na(dap)) %>%
+  summarise(prob = mean(habito_pad == "Palm" & dap >= 70)) %>% 
+  pull()
+
+p_B_inter_C
+```
+
+
+```{r}
+# Evento união: Qual a probabilidade de ser bifurcado ou ser palmeira?
+(p_evB + p_evC) - p_B_inter_C
+```
+
+```{r}
+# Or:
+p_B_union_C <- data_trab %>%
+  filter(!is.na(habito_pad), !is.na(dap)) %>% 
+  summarise(prob = mean(habito_pad == "Palm" | dap >= 70)) %>% 
+  pull()
+
+p_B_union_C
+```
+
+
+```{r}
+# Probabilidade condicional: Entre as leguminosas, qual a probabilidade de observarmos indivíduos bifurcados?
+data_trab %>%
+  filter(familia == "LEGUMINOSAE") %>%
+  summarise(p_bif_LEG = mean(bifurcada == 1, na.rm = TRUE)) %>% 
+  pull()
+```
+
+```{r}
+# Probabilidade condicional: Entre as bifurcadas, qual é a probabilidade de observarmos uma planta da família Leguminosae?
+data_trab %>%
+  filter(bifurcada == 1) %>%
+  summarise(p_bif_LEG = mean(familia == "LEGUMINOSAE", na.rm = TRUE)) %>% 
+  pull()
+```
+
+
+
+```{r}
+data_trab %>% 
+  count(n_fuste) %>% 
+  mutate(
+    prob = n / sum(n)
+  )
+```
+
+
+
+
+
+
+```{r}
+n <- 20
+x <- 3
+
+dbinom(x, size = n, prob = p_evA)
+```
+
+
+```{r}
+1 - pbinom(3, size = 20, prob = p_evA)
+```
+
+
+```{r}
+n <- 20
+x <- 0:n
+
+prob <- dbinom(x, size = n, prob = p_evA)
+
+dados_binom <- tibble(
+  bifurcadas = x,
+  probabilidade = prob
+)
+
+ggplot(dados_binom, aes(x = bifurcadas, y = probabilidade)) +
+  geom_col(width = 0.2) +
+  labs(
+    x = "Número de indivíduos bifurcados em uma amostra de 20",
+    y = "Probabilidade"
+  ) +
+  theme_classic()
+```
+
+
+
+```{r}
+data_trab %>% 
+  summarise(
+    media_n_fuste = mean(n_fuste, na.rm = TRUE),
+    var_n_fuste = var(n_fuste, na.rm = TRUE),
+    dp_n_fuste = sd(n_fuste, na.rm = TRUE)
+  )
+```
+
+```{r}
+hist(data_trab$dap)
+```
+
+
+
+```{r}
+plot(ecdf(data_trab$dap),
+     xlab = "DAP (cm)",
+     ylab = "Probabilidade acumulada",
+     main = "Distribuição acumulada empírica do DAP")
+```
+
+
+```{r}
+# P(DAP≤50)
+mean(data_trab$dap <= 50, na.rm = TRUE)
+```
+
+
+```{r}
+resumo_prob_secao <- data_trab %>% 
+  group_by(sec_cant) %>% 
+  summarise(
+    n = n(),
+    prob_bifurcada = mean(bifurcada == 1, na.rm = TRUE),
+    prob_dap_maior_50 = mean(dap > 50, na.rm = TRUE),
+    prob_altura_maior_20 = mean(altura > 20, na.rm = TRUE),
+    media_dap = mean(dap, na.rm = TRUE),
+    mediana_dap = median(dap, na.rm = TRUE)
+  ) %>% 
+  filter(n > 5) %>% 
+  arrange(desc(prob_dap_maior_50))
+```
+
+
+```{r}
+resumo_prob_secao
+```
+
