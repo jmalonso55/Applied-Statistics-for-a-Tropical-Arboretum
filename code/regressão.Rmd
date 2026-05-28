@@ -1,0 +1,300 @@
+---
+title: "Modelos lineares e extensões"
+author: "Jorge Alonso"
+date: "2026-05-27"
+output:
+  html_document: default
+---
+
+
+
+```{r}
+library(tidyverse)
+library(DHARMa)
+library(car)
+library(lmtest)
+library(MASS)
+library(lme4)
+library(lmerTest)
+library(performance)
+library(quantreg)
+```
+
+```{r}
+# Limpeza do histórico e da memória
+rm(list=ls(all=TRUE)) 
+gc() 
+```
+
+```{r}
+# Database link
+processed_url <- "https://raw.githubusercontent.com/jmalonso55/Applied-Statistics-for-a-Tropical-Arboretum/refs/heads/main/data/processed_data.csv"
+```
+
+
+```{r}
+# Loading data
+data_trab <- read.csv(processed_url, sep = ",")
+
+# Checking
+summary(data_trab)
+```
+
+
+```{r}
+# Modelo linear
+mod1 <- lm(altura ~ dap, data = data_trab)
+```
+
+```{r}
+shapiro.test(mod1$residuals)
+```
+
+```{r}
+bptest(mod1)
+```
+
+```{r}
+plot(mod1)
+```
+
+
+
+
+```{r}
+# Simular resíduos
+res_mod1 <- simulateResiduals(fittedModel = mod1, n = 1000)
+
+plot(res_mod1)
+```
+
+
+```{r}
+# Modelo log-log
+mod1_log <- lm(log(altura) ~ log(dap), data = data_trab)
+```
+
+```{r}
+shapiro.test(mod1_log$residuals)
+```
+
+```{r}
+bptest(mod1_log)
+```
+
+```{r}
+plot(mod1_log)
+```
+
+
+```{r}
+# Simular resíduos
+res_mod1_log <- simulateResiduals(fittedModel = mod1_log, n = 1000)
+
+plot(res_mod1_log)
+```
+
+
+```{r}
+# Modelo linear - log
+mod_log2 <- lm(altura ~ log(dap), data = data_trab)
+```
+
+
+```{r}
+plot(mod_log2)
+```
+
+```{r}
+shapiro.test(mod_log2$residuals)
+```
+
+```{r}
+bptest(mod_log2)
+```
+
+
+
+```{r}
+# Modelo quadrático
+mod2 <- lm(altura ~ dap + I(dap^2), data = data_trab)
+```
+
+
+```{r}
+plot(mod2)
+```
+
+
+```{r}
+shapiro.test(mod2$residuals)
+```
+
+```{r}
+bptest(mod2)
+```
+
+```{r}
+mod_bif <- lm(altura ~ area_basal + bifurcated, data = data_trab)
+```
+
+```{r}
+# Simular resíduos
+res_mod_bif <- simulateResiduals(fittedModel = mod_bif, n = 1000)
+
+plot(res_mod_bif)
+```
+
+
+
+
+```{r}
+mod_bif2 <- lm(altura ~ area_basal + I(area_basal^2) + bifurcated, data = data_trab)
+```
+
+
+```{r}
+# Simular resíduos
+res_mod_bif2 <- simulateResiduals(fittedModel = mod_bif2, n = 1000)
+
+plot(res_mod_bif2)
+```
+
+
+
+```{r}
+# Modelo com interação
+mod_int <- lm(altura ~ area_basal * bifurcated, data = data_trab)
+
+```
+
+
+
+```{r}
+# Simular resíduos
+res_mod_int <- simulateResiduals(fittedModel = mod_int, n = 1000)
+
+plot(res_mod_int)
+```
+
+
+```{r}
+# Linear generalizado
+mod_bin <- glm(bifurcada ~ altura, data = data_trab, family = binomial)
+```
+
+```{r}
+# Simular resíduos
+res_mod_bin <- simulateResiduals(fittedModel = mod_bin, n = 1000)
+
+plot(res_mod_bin)
+```
+
+```{r}
+summary(mod_bin)
+```
+
+
+```{r}
+exp(coef(mod_bin))
+```
+
+```{r}
+1 - 0.8707341 
+```
+
+
+
+```{r}
+# Modelo misto
+mod_misto1 <- lmer(altura ~ dap + (1 | sec_cant), data = data_trab, REML = T)
+```
+
+```{r}
+# Simular resíduos
+res_mod_misto1 <- simulateResiduals(fittedModel = mod_misto1, n = 1000)
+
+plot(res_mod_misto1)
+```
+
+
+```{r}
+summary(mod_misto1)
+```
+
+```{r}
+ranova(mod_misto1)
+```
+
+
+```{r}
+icc(mod_misto1)
+```
+
+```{r}
+ranef(mod_misto1)
+```
+
+
+```{r}
+mod_misto2 <- lmer(altura ~ poly(dap, 2) + (1 | sec_cant), data = data_trab, REML = T)
+```
+
+```{r}
+# Simular resíduos
+res_mod_misto2 <- simulateResiduals(fittedModel = mod_misto2, n = 1000)
+
+plot(res_mod_misto2)
+```
+
+
+
+```{r}
+# Regressão quantilica
+mod_q50 <- rq(altura ~ dap, tau = 0.50, data = data_trab)
+```
+
+```{r}
+summary(mod_q50)
+```
+
+```{r}
+mod_qs <- rq(altura ~ log(dap) + bifurcada, tau = c(0.25, 0.5, 0.75, 0.9), data = data_trab)
+
+summary(mod_qs, se = "boot", R = 1000)
+```
+
+```{r}
+plot(mod_qs)
+```
+
+
+```{r}
+ggplot(data_trab, aes(x = log(dap), y = altura, color = bifurcated)) +
+  geom_point(alpha = 0.25) +
+  geom_quantile(quantiles = c(0.25, 0.5, 0.75, 0.9), formula = y ~ x) +
+  labs(x = "DAP (cm)", y = "Altura (m)") +
+  theme_classic()
+```
+
+```{r}
+mod_qs
+```
+
+```{r}
+summary(mod_qs)
+```
+
+
+```{r}
+anova(mod_qs)
+```
+
+```{r}
+mod_qs$rho
+```
+
+```{r}
+AIC(mod_qs)
+```
+
