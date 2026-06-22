@@ -1,0 +1,393 @@
+---
+title: "Exploratory and Descriptive Statistics"
+author: "Jorge Alonso"
+date: "2026-05-19"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    code_folding: show
+    self_contained: true
+---
+
+# 1. Preparing, loading packages and data
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 7,
+  fig.height = 5,
+  dpi = 300)
+```
+
+
+```{r, message = FALSE}
+# Loading packages
+library(tidyverse)
+library(skimr)
+```
+
+
+```{r, message = FALSE}
+# Cleaning memory
+rm(list=ls(all=TRUE))
+gc()
+```
+
+
+```{r}
+# Database link
+raw_url <- "https://raw.githubusercontent.com/jmalonso55/Applied-Statistics-for-a-Tropical-Arboretum/refs/heads/main/data/raw_data.csv"
+```
+
+
+```{r}
+# Loading data
+data <- read.csv(raw_url, sep = ",")
+
+# Checking
+summary(data)
+```
+
+```{r}
+# Checking the data structure
+glimpse(data)
+```
+
+```{r}
+# Another way to resume data
+skim(data)
+```
+
+
+```{r}
+# Checking the first lines
+head(data, 10)
+```
+
+
+
+# 2. Preprocessing the data
+
+```{r}
+# Recoding canteiros
+
+# Type conversion
+data$seção <- as.numeric(data$seção)
+
+# Adding new variable
+data$sec_cant <- paste0(round(data$seção, 0), data$canteiro)
+```
+
+
+```{r}
+# Splitting taxonomic information
+data <- data %>%
+  mutate(taxon = as.character(taxon),
+    taxon = str_squish(taxon),
+    familia = str_extract(taxon, "^\\s*[A-Z-]+") |> str_trim(),
+    resto = str_remove(taxon, "^\\s*[A-Z-]+\\s*"),
+    genero = if_else(resto == "", NA_character_, word(resto, 1)),
+    especie = if_else(str_detect(word(resto, 2), "^[a-z][a-z-]*$"), word(resto, 2), NA_character_),
+    autor = case_when(is.na(genero) ~ NA_character_, is.na(especie) ~ str_remove(resto, paste0("^", genero, "\\s*")), TRUE ~ str_remove(resto, paste0("^", genero, "\\s+", especie, "\\s*"))),
+    autor = na_if(autor, "")) %>%
+  select(-resto)
+```
+
+
+```{r}
+# Adding basal area
+data <- data %>%
+  mutate(area_basal = (pi * (dap / 2)^2) / 10000)
+```
+
+
+```{r}
+# Checking habito
+unique(data$habito)
+```
+
+```{r}
+# Cleaning habito
+data <- data %>%
+  mutate(habito_original = habito,
+    habito_limpo = habito %>%
+      str_squish() %>%
+      str_to_lower() %>%
+      stri_trans_general("Latin-ASCII"),
+    habito_pad = case_when(
+      habito_limpo == "" ~ NA_character_,
+      
+      habito_limpo %in% c("arvore", "arboreo", "arborea, heliofila", "parvore") ~ "Tree",
+      
+      habito_limpo %in% c("palmeira", "plameira", "palmera", "palmeita") ~ "Arborescent",
+      
+      habito_limpo %in% c("arbusto", "arbustivo", "arbustiva, terrestre, ciofila") ~ "Shrub",
+      
+      habito_limpo %in% c("erva", "herbacea", "erva rizomatosa", "herbacea, terrestre, semi-ciofila", "herbacea, terrestre, heliofila") ~ "Herb",
+      
+      habito_limpo %in% c("trepadeira", "trepadeira com espinho", "cipo", "escandente", "arbusto voluvel", "arbusto escandente") ~ "Climber",
+      
+      habito_limpo %in% c("arbusto, trepadeira", "arbusto/trepadeira", "herbacea, trepadeira", "subarbusto") ~ "Climber/shrub or herb",
+      
+      habito_limpo %in% c("arbusto, arvore", "arbusto ou arvore", "arvoreta") ~ "Shrub/tree",
+      
+      habito_limpo %in% c("bambu") ~ "Bamboo",
+      
+      habito_limpo %in% c("cespitosa", "moita") ~ "Clumping",
+      
+      habito_limpo %in% c("aquatica") ~ "Aquatic",
+      
+      habito_limpo %in% c("pteridofita") ~ "Pteridophyte",
+      
+      habito_limpo %in% c("epifita") ~ "Epiphyte",
+      
+      TRUE ~ "Check"))
+```
+
+```{r}
+unique(data$habito_pad)
+```
+
+## 2.1. Processing bifurcated trees
+
+### 2.1.1. Selection single stem
+
+```{r}
+# Filtering trees with a single stem
+data_fuste_un <- data %>%
+  select(sec_cant, tombo, familia, genero, especie, habito_pad, altura, cap, dap, densidade, area_basal, obs) %>%
+  filter(!is.na(altura)) %>% 
+  group_by(tombo) %>%
+    filter(n() == 1) %>%
+    ungroup()
+```
+
+
+```{r}
+# Adding stem count and bifurcation variables
+data_fuste_un$n_fuste <- 1
+data_fuste_un$bifurcada <- 0
+```
+
+### 2.1.2. Processing bifurcated
+
+```{r}
+# Filtering bifurcated trees
+data_bifurcada <- data %>%
+  select(sec_cant, tombo, familia, genero, especie, habito_pad, altura, cap, dap, area_basal, densidade, obs) %>%
+  filter(!is.na(altura)) %>% 
+  group_by(tombo) %>%
+    filter(n() != 1) %>%
+    ungroup()
+```
+
+
+```{r}
+# Counting stems
+n_fuste_bif <- data_bifurcada %>%
+  count(tombo)
+```
+
+
+```{r}
+# Calculating equivalent DBH
+data_bifurcada_eq <- data_bifurcada %>%
+  group_by(tombo) %>%
+  mutate(dap = sqrt(sum(dap^2)), area_basal = sum(area_basal)) %>%
+  filter(altura == max(altura)) %>%
+  slice(1) %>%
+  ungroup()
+```
+
+```{r}
+# Adding stem count and bifurcation variables
+data_bifurcada_eq$n_fuste <- n_fuste_bif$n
+data_bifurcada_eq$bifurcada <- 1
+```
+
+### 2.1.3. Merging the data
+
+```{r}
+# Merging
+data_trab <- bind_rows(data_fuste_un, data_bifurcada_eq) %>% 
+  arrange(tombo)
+```
+
+
+```{r}
+# Creating logical variable for bifurcated
+data_trab <- data_trab %>% 
+   mutate(bifurcated = factor(bifurcada, levels = c(0, 1), labels = c("No", "Yes")))
+```
+
+
+```{r}
+# Checking work data
+skim(data_trab)
+```
+
+
+## 2.2.2. Checking inconsistenciaes
+
+```{r}
+data_trab %>% 
+  filter(familia == "ARECACEAE") %>% 
+  count(habito_pad)
+```
+
+```{r}
+data_trab <- data_trab %>%
+  mutate(
+    habito_pad = if_else(
+      str_to_upper(familia) == "ARECACEAE",
+      "Arborescent",
+      habito_pad
+    )
+  )
+```
+
+
+```{r}
+sort(unique(data_trab$familia))
+```
+
+
+```{r}
+data_trab %>% 
+  filter(familia %in% c("ASPARAGACEAE", "CACTACEAE", "CYCADACEAE", "HELICONIACEAE", "PANDANACEAE", "STRELITZIACEAE", "ZAMIACEAE")) %>%
+  count(genero, habito_pad)
+```
+
+
+```{r}
+
+
+familias_arborescentes <- c(
+  "ASPARAGACEAE",
+  "CACTACEAE",
+  "CYCADACEAE",
+  "HELICONIACEAE",
+  "PANDANACEAE",
+  "STRELITZIACEAE",
+  "ZAMIACEAE"
+)
+
+data_trab <- data_trab %>%
+  mutate(
+    habito_pad = if_else(
+      familia %in% familias_arborescentes & habito_pad == "Tree",
+      "Arborescent",
+      habito_pad
+    )
+  )
+```
+
+
+```{r}
+
+arvore
+Myracrodruon urundeuva
+Rauvolfia sumatrana
+Albizia polycephala
+Cyclolobium brasiliense
+Erythrina speciosa
+Mimosa schomburgkii
+Theobroma cacao
+Trichilia hirta
+Eugenia involucrata
+Averrhoa bilimbi
+Myrsine coriacea
+Calycophyllum candidissimum
+Calycophyllum spruceanum
+
+arbusto
+Alchornea trewioides
+Bauhinia ungulata
+Quercus lusitanica
+Gmelina asiatica
+Byrsonima crassifolia
+Solandra grandiflora
+
+
+```
+
+
+
+
+
+## 2.2. Detecting outliers
+
+```{r}
+# Scatter plot
+ggplot(data_trab, aes(x = dap, y = altura)) +
+  geom_point() +
+  theme_classic() +
+  scale_x_continuous(breaks = c(25, 50, 75, 100, 125, 150, 175, 200, 225)) +
+  scale_y_continuous(breaks = c(5, 10, 15, 20, 25, 30, 35, 40, 45)) +
+  labs(x = "Diameter at breast height (cm)", y = "Tree total height (m)") +
+  theme(panel.grid.major.x = element_line(color = "grey85", linetype = "dashed"))
+```
+
+
+```{r}
+# Calculating slenderness
+data_trab <- data_trab %>% 
+  mutate(rel_hd = altura/dap)
+```
+
+
+```{r}
+# Slenderness histogram
+ggplot(data_trab, aes(x = rel_hd)) +
+  geom_histogram(bins = 30) +
+  labs(y = "Count", x = "Slenderness") +
+  theme_classic() +
+  tema
+```
+
+```{r}
+# Slenderness boxplot
+ggplot(data_trab, aes(y = rel_hd, x = "")) +
+  geom_jitter(color = "darkblue", alpha = 0.15, width = 0.15, height = 0.05, size = 0.5) +
+  geom_boxplot(width = 0.25, fill = NA) +
+  labs(y = "Slenderness", x = "") +
+  theme_classic() +
+  tema
+```
+
+
+
+```{r}
+# qqplot
+qqnorm(data_trab$rel_hd)
+qqline(data_trab$rel_hd)
+```
+
+
+```{r}
+# 5% most extreme observations
+limites <- quantile(data_trab$rel_hd, c(0.025, 0.975), na.rm = TRUE)
+
+# Adding a variable to identify
+data_trab <- data_trab %>% 
+  mutate(outlier_rel_hd = rel_hd < limites[1] | rel_hd > limites[2])
+```
+
+
+```{r}
+# Scatter plot again
+ggplot(data_trab, aes(x = dap, y = altura, color = outlier_rel_hd)) +
+  geom_point() +
+  theme_classic() +
+  scale_x_continuous(breaks = c(25, 50, 75, 100, 125, 150, 175, 200, 225)) +
+  scale_y_continuous(breaks = c(5, 10, 15, 20, 25, 30, 35, 40, 45)) +
+  labs(x = "Diameter at breast height (cm)", y = "Tree total height (m)") +
+  tema +
+  theme(panel.grid.major.x = element_line(color = "grey85", linetype = "dashed"))
+```
+
+
