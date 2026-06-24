@@ -1,0 +1,98 @@
+---
+title: "Updating nomenclature"
+author: "Jorge Alonso"
+date: "2026-05-28"
+output: html_document
+---
+
+```{r}
+# Loading packages
+library(rgbif)
+```
+
+
+```{r}
+# Cleaning memory
+rm(list=ls(all=TRUE)) 
+gc() 
+```
+
+```{r}
+# Database link
+processed_url <- "https://raw.githubusercontent.com/jmalonso55/Applied-Statistics-for-a-Tropical-Arboretum/refs/heads/main/data/pre_processed_data.csv"
+```
+
+
+```{r}
+# Loading data
+data_trab <- read.csv(processed_url, sep = ",")
+
+# Checking
+summary(data_trab)
+```
+
+```{r}
+# Data manipulation
+gbif_input <- data_trab %>%
+  transmute(
+    name = str_squish(name),
+    family = str_to_title(str_trim(family)),
+    genus = str_to_title(str_trim(genus)),
+    species = str_to_lower(str_trim(species)),
+    kingdom = "Plantae",
+    tombo = tombo)
+```
+
+
+```{r}
+# Checking botanical nomenclature
+gbif_match <- rgbif::name_backbone_checklist(
+  name_data = gbif_input %>%
+    dplyr::select(name, family, genus, species, kingdom))
+```
+
+```{r}
+# Checking unique family names
+unique(gbif_match$family)
+```
+
+```{r}
+# Checking observations per family
+gbif_match %>% 
+  count(family) %>% 
+  arrange(desc(n))
+```
+
+
+```{r}
+# Updated names
+resumo <- gbif_match %>%
+  mutate(fam_mudou = str_to_upper(verbatim_family) != str_to_upper(family),
+    gen_mudou = str_to_title(verbatim_genus) != str_to_title(genus),
+    nome_mudou = canonicalName != verbatim_name) %>%
+  summarise(total = n(),
+    sem_match = sum(matchType == "NONE", na.rm = TRUE),
+    familia_corrigida = sum(fam_mudou, na.rm = TRUE),
+    genero_corrigido = sum(gen_mudou, na.rm = TRUE),
+    nome_corrigido = sum(nome_mudou, na.rm = TRUE))
+
+# Checking
+resumo
+```
+
+
+```{r}
+# Updating the database using the corrected nomenclature
+data_trab$name <- gbif_match$species
+data_trab$family <- gbif_match$family
+data_trab$genus <- gbif_match$genus
+data_trab$species <- gbif_match$specificEpithet
+```
+
+
+```{r}
+# Saving the updated file
+write.csv(data_trab, file = "processed_data.csv", row.names = F)
+```
+
+
