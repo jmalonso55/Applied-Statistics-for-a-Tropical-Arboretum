@@ -1,0 +1,508 @@
+---
+title: "Descriptive analysis"
+author: "Jorge Alonso"
+date: "2026-05-19"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    code_folding: show
+    self_contained: true
+---
+
+# 1. Preparing
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 7,
+  fig.height = 5,
+  dpi = 300)
+```
+
+## 1.1. Loading packages and data
+
+```{r, message = FALSE}
+# Loading packages
+library(tidyverse)
+library(skimr)
+library(stringr)
+library(stringi)
+library(DescTools)
+library(moments)
+library(treemapify)
+```
+
+
+```{r, message=FALSE, warning=FALSE}
+# Cleaning memory
+rm(list=ls(all=TRUE))
+invisible(gc())
+```
+
+
+```{r}
+# Database link
+raw_url <- "https://raw.githubusercontent.com/jmalonso55/Applied-Statistics-for-a-Tropical-Arboretum/refs/heads/main/data/processed_data.csv"
+```
+
+
+```{r}
+# Loading data
+data_trab <- read.csv(raw_url, sep = ",")
+
+# Checking
+summary(data_trab)
+```
+
+
+## 1.2. Themes and functions
+
+```{r}
+# Theme for plots 1
+tema <- theme(panel.grid.major.x = element_line(color = "grey90", linetype = "dashed"),
+        panel.background = element_rect(fill = "grey95"))
+```
+
+```{r}
+# Theme for plots 2
+tema2 <- theme(panel.grid.major.y = element_line(color = "grey90", linetype = "dashed"),
+        panel.background = element_rect(fill = "grey95"))
+```
+
+```{r}
+# Defining a function for the coefficient of variation
+var_coef <- function(x) {
+  (sd(x, na.rm = T)/mean(x, na.rm = T)) * 100}
+```
+
+# 2. Descriptive statistics
+
+## 2.1. Frequency distribution table
+
+### 2.1.1. Qualitative variable (family)
+
+```{r}
+# Creating a frequency table by family
+familia <- data_trab %>% 
+  filter(!is.na(family)) %>% 
+  count(family, name = "Freq_obs") %>% 
+  arrange(desc(Freq_obs))
+
+# Checking
+head(familia, 5)
+```
+
+```{r}
+# Calcular a frequência relativa e acumulada
+familia <- familia %>%
+  mutate(Fre_rel = Freq_obs / sum(Freq_obs),
+    Freq_acum_obs = cumsum(Freq_obs),
+    Freq_acum_rel = cumsum(Fre_rel))
+
+# Adicionar linha de total
+familia <- familia %>%
+  bind_rows(summarise(., family = "Total", 
+                      Freq_obs = sum(Freq_obs), 
+                      Fre_rel = sum(Fre_rel), 
+                      Freq_acum_obs = sum(Freq_obs), 
+                      Freq_acum_rel = 1))
+
+# Visualizar as 20 primeiras linhas da tabela
+head(familia, 10)
+```
+
+
+```{r}
+# Table visualization
+ggplot(head(familia, 20), aes(x = Freq_obs, y = reorder(family, Freq_obs))) +
+  geom_col(fill = "#A8D0E6") +
+  labs(y = "Family", x = "Observed frequency") +
+  scale_x_continuous(expand = c(0, 0), breaks = c(seq(0, 1400, by = 200))) +
+  theme_classic() +
+  tema
+```
+
+
+### 2.1.2. Discrete quantitative variable (number of stems)
+
+```{r}
+# Creating a frequency table by number of stems
+nfuste <- data_trab %>% 
+  count(n_caule, name = "Freq_obs") %>% 
+  arrange(desc(Freq_obs))
+
+# Checking
+head(nfuste, 5)
+```
+
+
+```{r}
+# Calcular a frequência relativa e acumulada
+nfuste <- nfuste %>%
+  mutate(Freq_rel = Freq_obs / sum(Freq_obs),
+    Freq_acum_obs = cumsum(Freq_obs),
+    Freq_acum_rel = cumsum(Freq_rel),
+    n_fuste = as.character(n_caule)) 
+
+# Checking
+nfuste
+```
+
+```{r}
+# Table visualization
+nfuste %>%
+  mutate(n_fuste = as.integer(as.character(n_fuste)),
+    n_fuste = factor(n_fuste, levels = rev(sort(unique(n_fuste))))) %>%
+  ggplot(aes(x = Freq_obs, y = n_fuste)) +
+  geom_col(fill = "#A8D0E6") +
+  labs(y = "Number of stems", x = "Observed frequency") +
+  scale_x_continuous(expand = c(0, 0)) +
+  theme_classic() +
+  tema
+```
+
+
+### 2.1.3. Continuous quantitative variable (slenderness)
+
+```{r}
+# Definir classes de altura
+data_trab <- data_trab %>%
+    mutate(classe_sle = cut(rel_hd, breaks = 10))
+
+# Calcular as frequências para cada classe de dap
+tab_sle <- data_trab %>%
+  count(classe_sle, name = "Freq_obs") %>%
+  mutate(Fre_rel = Freq_obs / sum(Freq_obs),
+    Freq_acum_obs = cumsum(Freq_obs),
+    Freq_acum_rel = cumsum(Fre_rel))
+
+tab_sle <- tab_sle %>%
+  bind_rows(summarise(., classe_sle = "Total",
+                      Freq_obs = sum(Freq_obs),
+                      Fre_rel = sum(Fre_rel),
+                      Freq_acum_obs = sum(Freq_obs),
+                      Freq_acum_rel = 1))
+
+# Visualizar a tabela de frequência da temperatura
+tab_sle
+```
+
+```{r}
+# Class limits
+limites_sle <- tibble(classe_sle = levels(data_trab$classe_sle)) %>%
+  mutate(classe_txt = str_remove_all(classe_sle, "\\(|\\]|\\[")) %>%
+  separate(classe_txt, into = c("limite_inf", "limite_sup"), sep = ",", convert = TRUE)
+
+limites_sle
+```
+
+
+```{r}
+# Table visualization
+  ggplot(data_trab, aes(x = rel_hd)) +
+  geom_histogram(bins = 10, fill = "#A8D0E6", color = "black", breaks = limites_sle$limite_inf) +
+  labs(x = "Slenderness", y = "Observed frequency") +
+  scale_y_continuous(expand = c(0, 0)) +
+  scale_x_continuous(breaks = limites_sle$limite_inf) +
+  theme_classic() +
+  tema2
+```
+
+
+## 2.2. Bivariate analysis
+
+### 2.2.1. Qualitative x quantitative
+
+```{r}
+# Mean and sd of height by stem condition
+data_trab %>% 
+  group_by(multicaule_l) %>% 
+  summarise(Mean = mean(altura), Standard_deviation = sd(altura)) %>% 
+  arrange(desc(Mean))
+```
+
+```{r}
+# Visualizing in a plot
+  ggplot(data_trab, aes(x = multicaule_l, y = altura)) +
+  geom_jitter(height = 0.05, width = 0.1, alpha = 0.4, color = "lightblue") +
+  stat_summary(fun.data = mean_sdl, size = 0.5, linewidth = 0.5, fun.args = list(mult = 1), color = "gray35") +
+  stat_summary(fun = mean, geom = "text", aes(label = sprintf("%.2f", after_stat((y)))), position = position_nudge(x = 0.25), size = 3, color = "gray25") +
+  labs(y = "Height (m)", x = "Bifurcated") +
+  scale_y_continuous(breaks = c(0, 5, 10, 15, 20, 25, 30, 35, 40), limits = c(0, NA)) +
+  theme_classic() +
+  tema2
+```
+
+
+### 2.2.2. Qualitative with qualitative
+
+```{r}
+# Contingency table
+tab_familia <- table(data_trab$family, data_trab$multicaule_l)
+
+# Observing
+tab_familia
+```
+
+
+```{r}
+# Contingency table for the 10 most frequent families
+filtro_familia <- unique(head(familia$family, 10))
+
+# Filtering
+familia_filtro <- data_trab %>% 
+  filter(family %in% filtro_familia)
+
+# Creating the table
+familia_10 <- 
+table(familia_filtro$family, familia_filtro$multicaule_l)
+
+# Observing
+addmargins(familia_10)
+```
+
+```{r}
+# Running the test
+teste_fam <- chisq.test(familia_10)
+
+# Inspecting the expected values
+round(addmargins(teste_fam$expected), 0)
+```
+
+```{r}
+# Test result
+teste_fam
+```
+
+
+```{r}
+# Visualizing the table
+mosaicplot(familia_10, main = "", color = c("darkred", "darkblue"), las = 1, cex.axis = 0.6, ylab = "Family", xlab = "Stem condition", dir = c("h", "v"), off = c(15, 3))
+```
+
+
+
+```{r}
+# Contingency coefficient
+ContCoef(familia_10)
+```
+
+```{r}
+# Abundance of individuals by genus within the top 10 families
+abundancia_generos <- data_trab %>%
+  filter(
+    family %in% filtro_familia,
+    !is.na(genus),
+    genus != ""
+  ) %>%
+  count(family, genus, name = "abundancia") %>%
+  arrange(family, desc(abundancia))
+
+abundancia_generos
+```
+
+
+```{r}
+# Table visualization
+ggplot(abundancia_generos, aes(area = abundancia, fill = family, subgroup = family, label = genus)
+) +
+  geom_treemap(color = "white") +
+  geom_treemap_subgroup_border(color = "black", linewidth = 0.7) +
+  geom_treemap_subgroup_text(place = "centre", grow = TRUE, alpha = 0.6, color = "black", fontface = "bold") +
+  geom_treemap_text(color = "black", place = "centre", reflow = TRUE, size = 8) +
+  labs(fill = "Family") +
+  theme(legend.position = "none",
+    plot.title = element_text(size = 14, face = "bold"))
+```
+
+
+### 2.2.3. Association between quantitative variables
+
+```{r}
+# Correlation between dendrometric variables
+with(data_trab, cor.test(altura, dap, method = "spearman"))
+```
+
+
+```{r}
+# Graphical visualization
+ggplot(data_trab, aes(x = dap, y = altura)) +
+  geom_point(alpha = 0.7, color = "lightblue") +
+  labs(x = "DBH (cm)", y = "Height (m)") +
+  theme_classic() +
+  tema +
+  theme(panel.grid.major.y = element_line(color = "grey90", linetype = "dashed"))
+```
+
+
+### 2.2.4.Combining variables to explore the dataset
+
+```{r}
+# Alternative graphical visualization
+ggplot(data_trab, aes(x = dap, y = altura, color = multicaule_l)) +
+  geom_point(alpha = 0.7) +
+  labs(x = "DBH (cm)", y = "Height (m)", color = "Multi-stem") +
+  theme_classic() +
+  tema +
+  theme(panel.grid.major.y = element_line(color = "grey90", linetype = "dashed"))
+```
+
+
+```{r}
+# Alternative graphical visualization with faceting
+ggplot(data_trab, aes(x = dap, y = altura, color = multicaule_l)) +
+  geom_point(alpha = 0.7) +
+  labs(x = "DBH (cm)", y = "Height (m)", color = "Multi-stem") +
+  facet_grid(~multicaule_l) +
+  theme_classic() +
+  tema +
+  theme(panel.grid.major.y = element_line(color = "grey90", linetype = "dashed"))
+```
+
+```{r}
+# Alternative graphical visualization - slenderness classes
+ggplot(data_trab, aes(x = dap, y = altura, color = classe_sle)) +
+  geom_point(alpha = 0.7) +
+  labs(x = "DBH (cm)", y = "Height (m)", color = "Slenderness class") +
+  theme_classic() +
+  tema +
+  theme(panel.grid.major.y = element_line(color = "grey90", linetype = "dashed"))
+```
+
+
+```{r}
+# Alternative graphical visualization with faceting - slenderness classes
+ggplot(data_trab, aes(x = dap, y = altura, color = classe_sle)) +
+  geom_point(alpha = 0.7) +
+  labs(x = "DBH (cm)", y = "Height (m)", color = "Slenderness class") +
+  facet_wrap(~classe_sle) +
+  theme_classic() +
+  tema +
+  theme(panel.grid.major.y = element_line(color = "grey90", linetype = "dashed"))
+```
+
+
+## 2.3. Summary Measures
+
+### 2.3.1. Central Tendency
+
+```{r}
+# Means of numerical variables
+data_trab %>%
+  filter(family %in% filtro_familia) %>% 
+  group_by(family) %>% 
+  summarise(n = n(), across(c(altura, dap, densidade, n_caule, rel_hd), mean)) %>% 
+  arrange(desc(altura))
+```
+
+```{r}
+# Comparing mean and median
+data_trab %>%
+  filter(family %in% filtro_familia) %>% 
+  group_by(family) %>% 
+  summarise(n = n(), dbh_mean = mean(dap), dbh_median = median(dap)) %>% 
+  arrange(desc(dbh_mean))
+```
+
+
+### 2.3.2. Dispersion
+
+```{r}
+# Mean, standard deviation, and coefficient of variation
+data_trab %>%
+  filter(family %in% filtro_familia) %>% 
+  group_by(family) %>% 
+  summarise(alt_media = mean(altura), alt_dp = sd(altura), alt_cv = var_coef(altura)) %>% 
+  arrange(desc(alt_cv))
+```
+
+
+
+```{r}
+# Selecting the top 10 beds with the most plants
+canteiros <- data_trab %>%
+  count(sec_cant, sort = TRUE) %>%
+  slice_head(n = 10)
+
+canteiros
+```
+
+
+```{r}
+# Height mean, standard deviation, and coefficient of variation - beds
+data_trab %>%
+  filter(sec_cant %in% pull(canteiros, sec_cant)) %>% 
+  group_by(sec_cant) %>% 
+  summarise(n = n(), alt_media = mean(altura), alt_dp = sd(altura), alt_cv = var_coef(altura)) %>% 
+  arrange(desc(alt_cv))
+```
+
+
+```{r}
+# DBH mean, standard deviation, and coefficient of variation - beds
+data_trab %>%
+  filter(sec_cant %in% pull(canteiros, sec_cant)) %>% 
+  group_by(sec_cant) %>% 
+  summarise(n = n(), dbh_media = mean(dap), dbh_dp = sd(dap), dbh_cv = var_coef(dap)) %>% 
+  arrange(desc(dbh_cv))
+```
+
+
+### 2.3.3. Measures of relative position
+
+```{r}
+# Quartiles
+quantile(data_trab$rel_hd)
+```
+
+```{r}
+# Deciles
+quantile(data_trab$rel_hd, probs = c(seq(0, 1, by = 0.1)))
+```
+
+```{r}
+# Percentiles
+quantile(data_trab$rel_hd, probs = c(0.01, 0.05, 0.95, 0.99))
+```
+
+
+```{r}
+# Boxplot
+data_trab %>%
+  filter(family %in% filtro_familia) %>% 
+  ggplot(aes(x = rel_hd, y = reorder(family, rel_hd))) +
+  geom_boxplot(alpha = 0.4) +
+  labs(y = "Family", x = "Slenderness") +
+  theme_classic() +
+  tema
+```
+
+### 2.3.4. Measures of distribution shape
+
+```{r}
+# Skewness
+skewness(data_trab$dap)
+```
+
+
+```{r}
+# Kurtosis
+kurtosis(data_trab$dap)
+```
+
+
+```{r}
+# Observed frequency
+ggplot(data = data_trab, aes(x = dap)) +
+  geom_histogram(bins = 30, fill = "#A8D0E6", color = "black", alpha = 0.4) +
+  labs(x = "DBH (cm)", y = "Frequência observada") +
+  scale_y_continuous(expand = c(0, 0)) +
+  theme_classic() +
+  tema2
+```
+
+
