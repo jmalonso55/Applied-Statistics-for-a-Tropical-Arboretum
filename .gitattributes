@@ -1,0 +1,10 @@
+# R Markdown scripts
+*.Rmd linguist-language=R linguist-detectable=true
+
+# Rendered HTML reports
+analysis/*.html linguist-generated=true
+analysis/**/*.html linguist-generated=true
+
+# Data files
+data/*.csv linguist-vendored=true
+data/**/*.csv linguist-vendored=true
