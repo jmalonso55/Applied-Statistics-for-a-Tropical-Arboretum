@@ -1,0 +1,346 @@
+---
+title: "Probability and random variables"
+author: "Jorge Alonso"
+date: "2026-05-21"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    code_folding: show
+    self_contained: true
+---
+
+# 1. Preparing, loading packages and data
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 7,
+  fig.height = 5,
+  dpi = 300)
+```
+
+
+```{r, message = FALSE}
+# Loading packages
+library(tidyverse)
+```
+
+
+```{r, message = FALSE}
+# Cleaning memory
+rm(list=ls(all=TRUE))
+invisible(gc())
+```
+
+
+```{r}
+# Database link
+processed_url <- "https://raw.githubusercontent.com/jmalonso55/Applied-Statistics-for-a-Tropical-Arboretum/refs/heads/main/data/processed_data.csv"
+```
+
+
+```{r}
+# Loading data
+data_trab <- read.csv(processed_url, sep = ",")
+
+# Checking
+summary(data_trab)
+```
+
+```{r}
+# Filtering to remove NA from the family column
+data_trab <- data_trab %>% 
+  filter(!is.na(family))
+```
+
+
+# 2. Empirical probabilities
+
+If an individual is randomly selected from the arboretum, what can we say about the probability of its family, stem status, or DBH class?
+
+```{r}
+# Randomly sampling one individual
+sample_n(data_trab, 1)
+```
+
+
+```{r}
+# If a plant is randomly selected in the arboretum, what is the probability that it is multi-stemmed?
+total <- nrow(data_trab)
+bif <- nrow(subset(data_trab, multicaule == 1))
+
+p_evA <- bif/total
+p_evA
+```
+
+
+```{r}
+# Complementary event
+p_evAc <- 1 - p_evA
+
+p_evAc
+```
+
+
+```{r}
+# Using dplyr
+data_trab %>%
+  summarise(p_multicaule = mean(multicaule == 1))
+```
+
+
+```{r}
+# What is the probability that the individual is a palm?
+p_evB <- data_trab %>%
+  summarise(p_palmeira = mean(family == "Arecaceae")) %>% 
+  pull()
+
+p_evB
+```
+
+```{r}
+# What is the probability of having DBH greater than or equal to 70 cm?
+p_evC <- data_trab %>%
+  summarise(p_dap70 = mean(dap >= 70)) %>% 
+  pull()
+
+p_evC
+```
+
+
+```{r}
+# Intersection event: What is the probability that the individual is a palm and has DBH greater than or equal to 70 cm?
+p_B_inter_C <- data_trab %>%
+  summarise(prob = mean(family == "Arecaceae" & dap >= 70)) %>% 
+  pull()
+
+p_B_inter_C
+```
+
+
+```{r}
+# Union event: What is the probability that the individual is a palm or have a DBH greater than or equal to 70 cm?
+(p_evB + p_evC) - p_B_inter_C
+```
+
+```{r}
+# Or:
+p_B_union_C <- data_trab %>%
+  summarise(prob = mean(family == "Arecaceae" | dap >= 70)) %>% 
+  pull()
+
+p_B_union_C
+```
+
+
+```{r}
+# Conditional probability: Among Fabaceae individuals, what is the probability of observing multi-stemmed individuals?
+data_trab %>%
+  filter(family == "Fabaceae") %>%
+  summarise(p_bif_LEG = mean(multicaule == 1)) %>% 
+  pull()
+```
+
+```{r}
+# Conditional probability: Among multi-stemmed individuals, what is the probability of observing a plant from the Fabaceae family?
+data_trab %>%
+  filter(multicaule == 1) %>%
+  summarise(p_bif_LEG = mean(family == "Fabaceae", na.rm = TRUE)) %>% 
+  pull()
+```
+
+
+# 3. Random variables
+
+## 3.1. Binomial distribution 
+
+```{r}
+# Setting the number of trials (n) and the number of successes of interest (x)
+n <- 20
+x <- 3
+```
+
+
+```{r}
+# If 20 plants are randomly selected, what is the probability of observing exactly three multi-stemmed individuals?
+dbinom(x, size = n, prob = p_evA)
+```
+
+
+```{r}
+# What is the probability of observing three or fewer multi-stemmed plants in a sample of 20 plants?
+pbinom(x, size = n, prob = p_evA, lower.tail = TRUE)
+```
+
+```{r}
+# And what is the probability of observing more than three multi-stemmed plants in a sample of 20 plants?
+pbinom(x, size = n, prob = p_evA, lower.tail = FALSE)
+```
+
+
+```{r}
+# Plotting the probability distribution
+
+# Defining the sample size and possible outcomes
+n <- 20
+x <- 0:n
+
+# Calculating binomial probabilities
+prob <- dbinom(x, size = n, prob = p_evA)
+
+# Creating the data frame for plotting
+dados_binom <- tibble(multicaule = x,  probabilidade = prob)
+
+# Plotting the probability distribution
+ggplot(dados_binom, aes(x = multicaule, y = probabilidade)) +
+  geom_col(width = 0.3, fill = "lightblue") +
+  scale_x_continuous(breaks = seq(0, 20, by = 1)) +
+  labs(x = "Number of multi-stemmed individuals in a sample of 20", y = "Probability") +
+  theme_classic()
+```
+
+
+
+```{r}
+# Estimating binomial parameters for multi-stemmed in a sample of 20 plants
+binom_resumo <- tibble(n = n, p = p_evA, esperanca = n * p, variancia = n * p * (1 - p), desvio_padrao = sqrt(n * p * (1 - p)))
+
+binom_resumo
+```
+
+
+## 3.2. Poisson distribution
+
+Does the count of individuals with high DBH per planting bed behave as a Poisson variable?
+
+```{r}
+# Calculating the 95th percentile for DBH
+quantile(data_trab$dap, probs = c(0.95))
+```
+
+```{r}
+# Selecting the 50 beds with the highest number of plants
+top_beds <- data_trab %>%
+  count(sec_cant, name = "n_total", sort = TRUE) %>%
+  slice_head(n = 50)
+
+# Counting plants with DBH above the 95th percentile in each selected bed
+bdap_beds <- data_trab %>%
+  filter(sec_cant %in% top_beds$sec_cant) %>%
+  group_by(sec_cant) %>%
+  summarise(n_total = n(), n_dap = sum(dap > 100))
+
+head(bdap_beds)
+```
+
+
+```{r}
+# Checking mean, variance, and dispersion
+bdap_beds %>%
+  summarise(mean_n_dap = mean(n_dap), var_n_dap = var(n_dap), dispersion_ratio = var_n_dap / mean_n_dap)
+```
+
+
+The Poisson distribution can be used as a theoretical reference, but the data show overdispersion. Therefore, the Poisson distribution does not perfectly describe this pattern.
+
+
+```{r}
+# Theoretical Poisson distribution
+
+# Estimating the Poisson parameter
+lambda <- mean(bdap_beds$n_dap)
+
+# Generating theoretical Poisson probabilities
+poisson_theoretical <- tibble(n_dap = 0:max(bdap_beds$n_dap), probability = dpois(n_dap, lambda = lambda))
+
+poisson_theoretical
+```
+
+
+```{r}
+# Plotting the theoretical Poisson distribution
+ggplot(poisson_theoretical, aes(x = n_dap, y = probability)) +
+  geom_col(width = 0.4, fill = "lightblue") +
+  scale_x_continuous(breaks = 0:max(poisson_theoretical$n_dap)) +
+  labs(x = "Number of plants with DBH > 100 cm per bed", y = "Probability") +
+  theme_classic()
+```
+
+
+
+## 3.3. Normal distribution
+
+```{r}
+# Filtering for Euphorbiaceae
+euphorbiaceae <- data_trab %>% 
+  filter(family == "Euphorbiaceae")
+```
+
+
+```{r}
+# QQ-plot for height values
+qqnorm(euphorbiaceae$altura)
+qqline(euphorbiaceae$altura, col = "red")
+```
+
+
+```{r}
+# Normality test
+shapiro.test(euphorbiaceae$altura)
+```
+
+
+```{r}
+# Estimating parameters
+mean_altura <- mean(euphorbiaceae$altura)
+sd_altura <- sd(euphorbiaceae$altura)
+
+mean_altura
+sd_altura
+```
+
+
+```{r}
+# Calculating the empirical probability of height > 20 m among Euphorbiaceae
+euphorbiaceae %>% 
+  summarise(n_total = n(), n_altura_20 = sum(altura > 20, na.rm = TRUE), prob_empirica = mean(altura > 20, na.rm = TRUE))
+```
+
+
+```{r}
+# Calculating the theoretical probability of Euphorbiaceae height > 20 m assuming normality
+pnorm(q = 20, mean = mean_altura, sd = sd_altura, lower.tail = FALSE)
+```
+
+```{r}
+# Calculating the 2.5% and 97.5% quantiles
+q_lower <- qnorm(0.025, mean = mean_altura, sd = sd_altura)
+q_upper <- qnorm(0.975, mean = mean_altura, sd = sd_altura)
+
+q_lower
+q_upper
+```
+
+
+```{r}
+# Creating values for the normal curve
+normal_curve <- tibble(altura = seq(from = mean_altura - 4 * sd_altura, to = mean_altura + 4 * sd_altura, length.out = 1000), density = dnorm(altura, mean = mean_altura, sd = sd_altura)) %>%
+  mutate(tail = case_when(altura <= q_lower ~ "Lower 2.5%", altura >= q_upper ~ "Upper 2.5%", TRUE ~ "Central 95%"))
+
+# Plotting
+ggplot(normal_curve, aes(x = altura, y = density)) +
+  geom_area(data = filter(normal_curve, tail == "Lower 2.5%"), fill = "red", alpha = 0.8) +
+  geom_area(data = filter(normal_curve, tail == "Upper 2.5%"), fill = "red", alpha = 0.8) +
+  geom_line(linewidth = 1) +
+  geom_vline(xintercept = q_lower, linetype = "dashed") +
+  geom_vline(xintercept = q_upper, linetype = "dashed") +
+  scale_x_continuous(breaks = c(round(q_lower, 2), round(q_upper, 2))) +
+  labs(x = "Height (m)", y = "Density") +
+  theme_classic()
+```
+
+
