@@ -1,0 +1,572 @@
+---
+title: "Data preprocessing"
+author: "Jorge Alonso"
+date: "2026-05-19"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    code_folding: show
+    self_contained: true
+---
+
+# 1. Preparing
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 7,
+  fig.height = 5,
+  dpi = 300)
+```
+
+## 1.1. Loading packages and data
+
+```{r, message = FALSE}
+# Loading packages
+library(tidyverse)
+library(skimr)
+library(stringi)
+```
+
+
+```{r, message = FALSE}
+# Cleaning memory
+rm(list=ls(all=TRUE))
+gc()
+```
+
+
+```{r}
+# Database link
+raw_url <- "https://raw.githubusercontent.com/jmalonso55/Applied-Statistics-for-a-Tropical-Arboretum/refs/heads/main/data/raw_data.csv"
+```
+
+
+```{r}
+# Loading data
+data <- read.csv(raw_url, sep = ",")
+
+# Checking
+summary(data)
+```
+
+
+```{r}
+# Checking the data structure
+glimpse(data)
+```
+
+```{r}
+# Another way to resume data
+skim(data)
+```
+
+
+```{r}
+# Checking the first lines
+head(data, 10)
+```
+
+## 1.2. Themes and functions
+
+```{r}
+tema <- theme(panel.grid.major.y = element_line(color = "grey90", linetype = "dashed"),
+        panel.background = element_rect(fill = "grey97"))
+```
+
+
+# 2. Preprocessing the data
+
+```{r}
+# Recoding arboretum beds (canteiros)
+
+# Type conversion
+data$seção <- as.numeric(data$seção)
+
+# Adding new variable
+data$sec_cant <- paste0(round(data$seção, 0), data$canteiro)
+```
+
+
+```{r}
+# Checking for dead plants
+data %>% 
+  filter(str_detect(taxon, regex("morr|mort", ignore_case = TRUE)))
+```
+
+
+```{r}
+# Removing dead plants
+data <- data %>% 
+  filter(!taxon == "morto")
+```
+
+
+```{r}
+# Splitting taxonomic information
+data <- data %>%
+  mutate(taxon = as.character(taxon),
+    taxon = str_squish(taxon),
+    family = str_extract(taxon, "^\\s*[A-Z-]+") |> str_trim(),
+    resto = str_remove(taxon, "^\\s*[A-Z-]+\\s*"),
+    genus = if_else(resto == "", NA_character_, word(resto, 1)),
+    species = if_else(str_detect(word(resto, 2), "^[a-z][a-z-]*$"), word(resto, 2), NA_character_),
+    autor = case_when(is.na(genus) ~ NA_character_, is.na(species) ~ str_remove(resto, paste0("^", genus, "\\s*")), TRUE ~ str_remove(resto, paste0("^", genus, "\\s+", species, "\\s*"))),
+    autor = na_if(autor, "")) %>%
+  mutate(name = paste(genus, species)) %>% 
+  select(-resto)
+```
+
+
+```{r}
+# Checking habito
+unique(data$habito)
+```
+
+```{r}
+# Cleaning habito
+data <- data %>%
+  mutate(habito_original = habito,
+    habito_limpo = habito %>%
+      str_squish() %>%
+      str_to_lower() %>%
+      stri_trans_general("Latin-ASCII"),
+    habito_pad = case_when(
+      habito_limpo == "" ~ NA_character_,
+      
+      habito_limpo %in% c("arvore", "arboreo", "arborea, heliofila", "parvore") ~ "Tree",
+      
+      habito_limpo %in% c("palmeira", "plameira", "palmera", "palmeita") ~ "Arborescent",
+      
+      habito_limpo %in% c("subarbusto", "arbusto", "arbustivo", "arbustiva, terrestre, ciofila") ~ "Shrub",
+      
+      habito_limpo %in% c("erva", "herbacea", "erva rizomatosa", "herbacea, terrestre, semi-ciofila", "herbacea, terrestre, heliofila") ~ "Herb",
+      
+      habito_limpo %in% c("trepadeira", "trepadeira com espinho", "cipo", "escandente", "arbusto voluvel", "arbusto escandente", "arbusto, trepadeira", "arbusto/trepadeira", "herbacea, trepadeira") ~ "Climber",
+      
+      habito_limpo %in% c("arbusto, arvore", "arbusto ou arvore", "arvoreta") ~ "Shrub/tree",
+      
+      habito_limpo %in% c("bambu") ~ "Bamboo",
+      
+      habito_limpo %in% c("cespitosa", "moita") ~ "Clumping",
+      
+      habito_limpo %in% c("aquatica") ~ "Aquatic",
+      
+      habito_limpo %in% c("pteridofita") ~ "Pteridophyte",
+      
+      habito_limpo %in% c("epifita") ~ "Epiphyte",
+      
+      TRUE ~ "Check"))
+```
+
+```{r}
+# Checking changes
+unique(data$habito_pad)
+```
+
+```{r}
+# Checking CBH and DBH consistency
+data %>%
+  mutate(dap_calc = cap / pi, dif_dap = dap - dap_calc) %>%
+  summarise(min_dif = min(dif_dap, na.rm = TRUE), max_dif = max(dif_dap, na.rm = TRUE), mean_abs_dif = mean(abs(dif_dap), na.rm = TRUE))
+```
+
+
+## 2.1. Processing multi-stem plants
+
+### 2.1.1. Single stem
+
+```{r}
+# Filtering trees with a single stem
+data_fuste_un <- data %>%
+  select(sec_cant, tombo, family, genus, species, name, habito_pad, altura, cap, dap, densidade) %>%
+  filter(!is.na(altura)) %>% 
+  group_by(tombo) %>%
+    filter(n() == 1) %>%
+    ungroup()
+```
+
+
+```{r}
+# Adding stem count and multi-stem variables
+data_fuste_un$n_caule <- 1
+data_fuste_un$multicaule <- 0
+```
+
+### 2.1.2. Processing multi-stem
+
+```{r}
+# Filtering multi-stem plant
+data_bifurcada <- data %>%
+  select(sec_cant, tombo, family, genus, species, name, habito_pad, altura, cap, dap, densidade) %>%
+  filter(!is.na(altura)) %>% 
+  group_by(tombo) %>%
+    filter(n() != 1) %>%
+    ungroup()
+```
+
+
+```{r}
+# Counting stems
+n_fuste_bif <- data_bifurcada %>%
+  count(tombo)
+```
+
+
+```{r}
+# Calculating equivalent DBH
+data_bifurcada_eq <- data_bifurcada %>%
+  group_by(tombo) %>%
+  mutate(dap = sqrt(sum(dap^2))) %>%
+  filter(altura == max(altura)) %>%
+  slice(1) %>%
+  ungroup()
+```
+
+```{r}
+# Adding stem count and multi-stem variables
+data_bifurcada_eq$n_caule <- n_fuste_bif$n
+data_bifurcada_eq$multicaule <- 1
+```
+
+### 2.1.3. Merging the data
+
+```{r}
+# Merging
+data_trab <- bind_rows(data_fuste_un, data_bifurcada_eq) %>% 
+  arrange(tombo)
+```
+
+
+```{r}
+# Creating logical variable for multi-stem
+data_trab <- data_trab %>% 
+   mutate(multicaule_l = factor(multicaule, levels = c(0, 1), labels = c("No", "Yes")))
+```
+
+### 2.1.4. New variables
+
+```{r}
+# Calculating slenderness
+data_trab <- data_trab %>% 
+  mutate(rel_hd = altura/dap)
+```
+
+```{r}
+# Adding basal area
+data_trab <- data_trab %>%
+  mutate(area_basal = (pi * (dap / 2)^2) / 10000)
+```
+
+
+```{r}
+# Checking work data
+skim(data_trab)
+```
+
+
+## 2.2. Checking for inconsistencies
+
+### 2.2.1. Growth habit inconsistencies
+
+```{r}
+# Checking palm habits
+data_trab %>% 
+  filter(family == "ARECACEAE") %>% 
+  count(habito_pad)
+```
+
+```{r}
+# Identifying palms with DBH > 10 cm as arborescent
+data_trab <- data_trab %>%
+  mutate(habito_pad = if_else(str_to_upper(family) == "ARECACEAE", "Arborescent", habito_pad))
+```
+
+
+```{r}
+# Checking unique families
+sort(unique(data_trab$family))
+```
+
+
+```{r}
+# Checking growth habits of some families
+data_trab %>% 
+  filter(family %in% c("ASPARAGACEAE", "CACTACEAE", "CYCADACEAE", "HELICONIACEAE", "PANDANACEAE", "STRELITZIACEAE", "ZAMIACEAE")) %>%
+  count(genus, habito_pad)
+```
+
+
+```{r}
+# Reclassifying individuals identified as trees as arborescent
+data_trab <- data_trab %>%
+  mutate(habito_pad = if_else(family %in% c("ASPARAGACEAE", "CACTACEAE", "CYCADACEAE", "HELICONIACEAE",  "PANDANACEAE", "STRELITZIACEAE", "ZAMIACEAE") & habito_pad == "Tree", "Arborescent", habito_pad))
+```
+
+
+```{r}
+# Checking errors identified by BIEN or GIFT
+arvores <- c("Acanthosyris paulo-alvinii", "Albizia polycephala", "Alchornea NA", "Andira nitida", "Astronium urundeuva", "Calycophyllum candidissimum", "Calycophyllum spruceanum", "Cecropia NA", "Chloroleucon foliolosum", "Coccoloba uvifera", "Cyclolobium brasiliense", "Eugenia sprengelii", "Eugenia macrosperma", "Exostyles venusta", "Ficus NA", "Guarea NA", "Luetzelburgia guaissara", "Mimosa schomburgkii", "Myracrodruon urundeuva", "Myrcia carioca", "Myrsine coriacea", "Pleroma granulosum", "Rauvolfia sumatrana", "Simira alba", "Talipariti tiliaceum", "Trichilia hirta", "Trichilia ramalhoi")
+arvore_arbusto <- c("Alchornea trewioides", "Averrhoa bilimbi", "Bauhinia aculeata", "Cordia superba", "Dalbergia hortensis", "Erythrina speciosa", "Eugenia involucrata", "Eugenia NA", "Platycladus orientalis", "Spongiosperma grandiflorum", "Tabernaemontana catharinensis", "Theobroma cacao", "Thuja occidentalis")
+arbusto <- c("Acalypha NA", "Acnistus arborescens", "Azanza lampas", "Bauhinia ungulata", "Byrsonima crassifolia", "Callicarpa nudiflora", "Casearia sylvestris", "Cestrum axillare", "Coccoloba arborescens", "Coffea liberica", "Dombeya wallichii", "Gmelina asiatica", "Hibiscus NA", "Ilex cornuta", "Jatropha curcas", "Murraya paniculata", "Myrciaria tenella", "Parkinsonia aculeata", "Piper NA", "Piper tuberculatum", "Quercus lusitanica", "Rhaphiolepis bibas", "Stifftia chrysantha", "Tecomaria capensis", "Thespesia lampas")
+arbusto_liana <- c("Antigonon leptopus", "Grevillea thelemanniana", "Macropsychanthus hexander", "Poikilospermum naucleiflorum", "Solandra grandiflora", "Strophanthus gratus", "Trigonia villosa", "Turbina corymbosa")
+arborescente <- c("Beaucarnea NA", "Cycas NA", "Encephalartos altensteinii", "Lepidozamia peroffskyana", "Pandanus NA", "Pandanus tectorius", "Pandanus utilis", "Ravenala madagascariensis", "Yucca aloifolia")
+```
+
+
+```{r}
+# Checking habits of trees
+data_trab %>% 
+  filter(name %in% arvores) %>% 
+  count(habito_pad)
+```
+
+
+
+
+```{r}
+# Identifying trees
+data_trab <- data_trab %>%
+  mutate(habito_pad = if_else(name %in% arvores, "Tree", habito_pad))
+```
+
+```{r}
+# Checking habits of shrubs
+data_trab %>% 
+  filter(name %in% arbusto) %>% 
+  count(habito_pad)
+```
+
+
+```{r}
+# Identifying shrubs as shrubs
+data_trab <- data_trab %>%
+  mutate(habito_pad = if_else(name %in% arbusto, "Shrub", habito_pad))
+```
+
+
+```{r}
+# Checking habits of shrubs
+data_trab %>% 
+  filter(name %in% arvore_arbusto) %>% 
+  count(habito_pad)
+```
+
+```{r}
+# Identifying shrubs as shrubs
+data_trab <- data_trab %>%
+  mutate(habito_pad = if_else(name %in% arvore_arbusto, "Shrub/tree", habito_pad))
+```
+
+
+```{r}
+# Checking habits of shrubs
+data_trab %>% 
+  filter(name %in% arbusto_liana) %>% 
+  count(habito_pad)
+```
+
+
+```{r}
+# Identifying climbers as climbers
+data_trab <- data_trab %>%
+  mutate(habito_pad = if_else(name %in% arbusto_liana, "Shrub/climber", habito_pad))
+```
+
+```{r}
+# Identifying trees as trees
+data_trab <- data_trab %>%
+  mutate(habito_pad = if_else(name %in% arborescente, "Arborescent", habito_pad))
+```
+
+
+```{r}
+# Checking for not available 
+data_trab %>% 
+  filter(is.na(habito_pad))
+```
+
+```{r}
+# Correcting
+data_trab <- data_trab %>%
+  mutate(habito_pad = case_when( tombo == 650 ~ "Arborescent", tombo %in% c(4726, 8133) ~ "Tree", TRUE ~ habito_pad))
+```
+
+
+```{r}
+# Checking
+unique(data_trab$habito_pad)
+```
+
+### 2.2.2. Height and DBH inconsistencies
+
+```{r}
+# Checking for higher heights
+data_trab %>% 
+  arrange(desc(altura)) %>% 
+  slice_head(n = 20) %>% 
+  select(tombo, name, family, altura, dap)
+```
+
+
+```{r}
+# Checking lower than 2 m heights
+data_trab %>% 
+  filter(altura <= 2) %>% 
+  select(tombo, name, family, altura, dap)
+```
+
+```{r}
+# Checking for higher DBH
+data_trab %>% 
+  arrange(desc(dap)) %>% 
+  slice_head(n = 20) %>% 
+  select(tombo, name, family, altura, dap)
+```
+
+```{r}
+# Checking for lower DBH
+data_trab %>% 
+  arrange(dap) %>% 
+  slice_head(n = 20) %>% 
+  select(tombo, name, family, altura, dap)
+```
+
+```{r}
+# Checking higher slenderness
+data_trab %>% 
+  arrange(desc(rel_hd)) %>% 
+  slice_head(n = 20) %>% 
+  select(tombo, name, family, altura, dap)
+```
+
+
+```{r}
+# Checking lower slenderness
+data_trab %>% 
+  arrange(rel_hd) %>% 
+  slice_head(n = 20) %>% 
+  select(tombo, name, family, altura, dap)
+```
+
+
+```{r}
+# Removing possible DBH or height typos
+data_trab <- data_trab %>% 
+  filter(!tombo %in% c(5571, 8161))
+```
+
+
+```{r}
+# Checking
+summary(data_trab)
+```
+
+
+```{r}
+# Checking for inconsistencies in tombo
+n_distinct(data_trab$tombo)
+nrow(data_trab)
+```
+
+```{r}
+# Checking for unidentified plants
+data_trab %>%
+  filter(is.na(genus) | is.na(species)) %>%
+  count(family, genus, species, sort = TRUE)
+```
+
+
+```{r}
+# Checking for inconsistencies in basal area
+data_trab %>%
+  mutate(area_basal_calc = pi * (dap / 200)^2, dif_ab = area_basal - area_basal_calc) %>%
+  summarise(min_dif = min(dif_ab, na.rm = TRUE), max_dif = max(dif_ab, na.rm = TRUE), mean_abs_dif = mean(abs(dif_ab), na.rm = TRUE))
+```
+
+
+```{r}
+# Checking beds
+unique(data_trab$sec_cant)
+```
+
+
+```{r}
+# Checking beds with few plants with DBH >= 10 cm
+data_trab %>%
+  count(sec_cant) %>%
+  filter(n <= 3) %>%
+  arrange(n)
+```
+
+
+## 2.3. Evaluating possible outliers
+
+
+```{r}
+# Scatter plot
+ggplot(data_trab, aes(x = dap, y = altura)) +
+  geom_point() +
+  theme_classic() +
+  scale_x_continuous(breaks = c(10, 40, 70, 100, 130, 160, 190, 220)) +
+  scale_y_continuous(breaks = c(5, 15, 25, 35, 45)) +
+  labs(x = "Diameter at breast height (cm)", y = "Tree total height (m)") + 
+  tema +
+  theme(panel.grid.major.x = element_line(color = "grey90", linetype = "dashed"))
+```
+
+
+```{r}
+# Slenderness histogram
+ggplot(data_trab, aes(x = rel_hd)) +
+  geom_histogram(bins = 30, fill = "lightblue", color = "grey70") +
+  labs(y = "Count", x = "Slenderness") +
+  theme_classic() +
+  tema
+```
+
+```{r}
+# Slenderness boxplot
+ggplot(data_trab, aes(y = rel_hd, x = "")) +
+  geom_jitter(color = "darkblue", alpha = 0.15, width = 0.15, height = 0.05, size = 0.5) +
+  geom_boxplot(width = 0.25, fill = NA) +
+  labs(y = "Slenderness", x = "") +
+  theme_classic()
+```
+
+
+
+```{r}
+# qqplot
+qqnorm(data_trab$rel_hd)
+qqline(data_trab$rel_hd)
+```
+
+
+```{r}
+# 5% most extreme observations
+limites <- quantile(data_trab$rel_hd, c(0.025, 0.975), na.rm = TRUE)
+
+# Adding a variable to identify
+data_trab <- data_trab %>% 
+  mutate(extreme_rel_hd = rel_hd < limites[1] | rel_hd > limites[2])
+```
+
+
+```{r}
+# Scatter plot again
+ggplot(data_trab, aes(x = dap, y = altura, color = extreme_rel_hd)) +
+  geom_point(alpha = 0.5) +
+  theme_classic() +
+  scale_x_continuous(breaks = c(25, 50, 75, 100, 125, 150, 175, 200, 225)) +
+  scale_y_continuous(breaks = c(5, 10, 15, 20, 25, 30, 35, 40, 45)) +
+  labs(x = "Diameter at breast height (cm)", y = "Tree total height (m)", color = "Extreme obs.:") +
+  tema +
+  theme(panel.grid.major.x = element_line(color = "grey90", linetype = "dashed"))
+```
+
+
