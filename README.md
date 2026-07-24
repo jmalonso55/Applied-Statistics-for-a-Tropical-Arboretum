@@ -68,27 +68,6 @@ The scripts are numbered according to the pedagogical sequence in which the stat
 
 The first five analytical blocks document the progression of the course. The sixth script integrates the analyses selected for the manuscript and includes additional procedures used during the evaluation and refinement of the results.
 
-## Main analytical approaches
-
-The repository includes examples of:
-
-* data cleaning and transformation;
-* taxonomic and growth-habit checking;
-* processing of plants with multiple stems;
-* calculation of equivalent DBH, basal area, and slenderness;
-* descriptive statistics and frequency distributions;
-* histograms, boxplots, scatterplots, bar charts, treemaps, and bump charts;
-* empirical and theoretical probability distributions;
-* confidence intervals and hypothesis testing;
-* bootstrap procedures;
-* chi-square tests and measures of association;
-* generalized linear models with binomial distribution;
-* linear and quadratic height-DBH models;
-* mixed-effects models accounting for variation among arboretum planting beds;
-* model comparison using goodness-of-fit measures and information criteria;
-* graphical and simulation-based residual diagnostics.
-
-The manuscript-level analyses include comparisons between taxonomic abundance and structural dominance, evaluation of multiple-stem occurrence, and height-DBH models for *Roystonea* and *Carapa*.
 
 ## Reproducing the analyses
 
