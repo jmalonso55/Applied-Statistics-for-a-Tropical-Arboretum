@@ -4,7 +4,7 @@ This repository contains the datasets, R scripts, and rendered analytical output
 
 > **Dendrometric Data from a Tropical Arboretum for Teaching Applied Statistics and Contributing to Living Collection Monitoring**
 
-The study describes the use of dendrometric data from the arboretum of the Rio de Janeiro Botanical Garden Research Institute (JBRJ), Brazil, as a common empirical framework for teaching applied statistics in a graduate course in Botany. The analyses also generate quantitative information that may contribute to the description, monitoring, and management of the living collection.
+The study describes the use of dendrometric data from the arboretum of the Rio de Janeiro Botanical Garden Research Institute (JBRJ), Brazil, as a common real-world dataset for teaching applied statistics in a graduate course in Botany. The analyses also generate quantitative information that may contribute to the description, monitoring, and management of the living collection.
 
 ## Online analyses
 
