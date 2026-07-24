@@ -1,0 +1,1376 @@
+---
+title: "Manuscript code"
+author: "Jorge Alonso"
+date: "2026-06-15"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    code_folding: show
+    self_contained: true
+---
+
+# 1. Preparing for analysis
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 7,
+  fig.height = 5,
+  dpi = 300)
+```
+
+## 1.1. Loading data and packages
+
+```{r, message=FALSE}
+# Loading packages
+library(tidyverse)
+library(treemapify)
+library(cowplot)
+library(DescTools)
+library(scales)
+library(DHARMa)
+library(ggeffects)
+library(lme4)
+library(performance)
+library(lmtest)
+library(lmerTest)
+library(emmeans)
+```
+
+```{r}
+# Cleaning data and memory
+rm(list=ls(all=TRUE)) 
+gc() 
+```
+
+```{r}
+# Database link
+processed_url <- "https://raw.githubusercontent.com/jmalonso55/Applied-Statistics-for-a-Tropical-Arboretum/refs/heads/main/data/processed_data.csv"
+```
+
+```{r}
+# Loading data
+data_trab <- read.csv(processed_url, sep = ",")
+
+# Checking
+summary(data_trab)
+```
+
+
+## 1.2. Subsetting data
+
+```{r}
+# Filtering for trees
+arvore <- data_trab %>% 
+  filter(habito_pad == "Tree")
+```
+
+```{r}
+# Filtering for Carapa
+carapa <- arvore %>%
+  filter(genus == "Carapa")
+```
+
+```{r}
+# Filtering for Arecaceae
+palmeira <- data_trab %>% 
+  filter(family == "Arecaceae")
+```
+
+```{r}
+# Filtering for Roystonea
+roystonea <- palmeira %>% 
+  filter(genus == "Roystonea", !is.na(species))
+```
+
+## 1.3. Themes and functions
+
+```{r}
+# Frequency table function
+freq_tab <- function(data, var, n_classes = 10) {
+  data %>%
+    mutate(classe = cut({{ var }}, breaks = n_classes, ordered_result = TRUE)) %>%
+    count(classe, name = "Freq_obs") %>%
+    mutate(Fre_rel = Freq_obs / sum(Freq_obs), Freq_acum_obs = cumsum(Freq_obs), Freq_acum_rel = cumsum(Fre_rel), classe = as.character(classe), lim_inf = as.numeric(sub("^\\((.*),.*\\]$", "\\1", classe)), lim_sup = as.numeric(sub("^\\(.*, *(.*)\\]$", "\\1", classe)), centro_classe = (lim_inf + lim_sup) / 2) %>%
+    bind_rows(summarise(., classe = "Total", Freq_obs = sum(Freq_obs), Fre_rel = sum(Fre_rel), Freq_acum_obs = max(Freq_acum_obs), Freq_acum_rel = 1, lim_inf = NA_real_, lim_sup = NA_real_, centro_classe = NA_real_))
+}
+```
+
+```{r}
+# Histogram function
+hist_dens <- function(data, var, freq, xlab = NULL, fill = "#A8D0E6", color = "black", alpha = 0.5) {
+  freq_plot <- freq %>% filter(classe != "Total")
+  breaks_hist <- c(freq_plot$lim_inf, last(freq_plot$lim_sup))
+  
+  ggplot(data, aes(x = {{ var }})) +
+    geom_histogram(breaks = breaks_hist, fill = fill, color = color, alpha = alpha, width = 0.5) +
+    labs(x = xlab, y = "Frequency") +
+    scale_y_continuous(expand = c(0, 0)) +
+    scale_x_continuous(breaks = breaks_hist, labels = scales::label_number(accuracy = 1)) +
+    theme_classic() +
+    theme(panel.grid.major.y = element_line(color = "grey90", linetype = "dashed"),
+          panel.background = element_rect(fill = "grey95"),
+          axis.text.x = element_text(angle = 45, hjust = 1))
+}
+```
+
+# 2. Descriptive analysis
+
+## 2.1. Most frequent families and genera
+
+```{r}
+# Filtering top 10 families
+familias_top10 <- data_trab %>%
+  filter(!is.na(family), family != "") %>%
+  count(family, name = "n_family") %>%
+  slice_max(n_family, n = 10, with_ties = FALSE) %>%
+  pull(family)
+```
+
+```{r}
+# Abundance of individuals by genus within the top 10 families
+abundancia_generos <- data_trab %>%
+  filter(family %in% familias_top10, !is.na(genus), genus != "") %>%
+  count(family, genus, name = "abundancia") %>%
+  group_by(family) %>%
+  mutate(rank_genus = rank(-abundancia, ties.method = "first"), label_genus = if_else(rank_genus <= 6, genus, "")) %>%
+  ungroup() %>%
+  arrange(family, desc(abundancia))
+```
+
+```{r}
+# Summarizing abundance by family
+abundancia_generos %>% 
+  group_by(family) %>% 
+  summarise(abundancia = sum(abundancia)) %>% 
+  arrange(desc(abundancia))
+```
+
+```{r}
+# Filtering the top 5 genera per family
+abundancia_generos %>% 
+  filter(rank_genus <= 5) %>% 
+  select(-label_genus, -rank_genus)
+```
+
+```{r}
+# Table visualization
+trmp <- 
+ggplot(abundancia_generos, aes(area = abundancia, fill = family, subgroup = family)) +
+  geom_treemap(color = "white") +
+  geom_treemap_subgroup_border(color = "black") +
+  geom_treemap_subgroup_text(place = "centre", grow = TRUE, alpha = 0.7, color = "black", fontface = "bold", min.size = 10) +
+  geom_treemap_text(aes(label = label_genus), color = "black", place = "bottomright", reflow = TRUE, grow = F, min.size = 4, fontface = "italic", size = 7) +
+  theme(legend.position = "none")
+
+trmp
+```
+
+```{r}
+# Saving
+ggsave("treemap.png", plot = trmp, width = 16, height = 9, units = "cm", dpi = 1200)
+```
+
+```{r}
+# Most abundant species per family
+tab_familias <- data_trab %>%
+  filter(!is.na(family), family != "", !is.na(name), name != "") %>%
+  add_count(family, name = "family_abundance") %>%
+  count(family, family_abundance, name, name = "species_abundance") %>%
+  group_by(family, family_abundance) %>%
+  slice_max(species_abundance, n = 1, with_ties = FALSE) %>%
+  ungroup() %>%
+  slice_max(family_abundance, n = 10, with_ties = FALSE) %>%
+  arrange(desc(family_abundance)) %>%
+  rename(most_abundant_species = name)
+
+tab_familias
+```
+
+```{r, fig.width=8, fig.height=6}
+# Table for plot
+tab_plot <- tab_familias %>%
+  arrange(family_abundance) %>%
+  mutate(y = row_number() * 1.4, label_species = paste0(most_abundant_species, " (n = ", species_abundance, ")"))
+
+# Plotting
+ggplot(tab_plot) +
+  geom_rect(aes(xmin = 0, xmax = family_abundance, ymin = y - 0.30, ymax = y + 0.30), fill = "grey85", color = NA, alpha = 0.5) +
+  geom_rect(aes(xmin = 0, xmax = species_abundance, ymin = y - 0.18, ymax = y + 0.18), fill = "#A8D0E6", color = NA) +
+  geom_text(aes(x = family_abundance, y = y, label = family_abundance), hjust = -0.25, size = 3.5, color = "grey50") +
+  geom_text(aes(x = 10, y = y + 0.43, label = label_species), hjust = 0, size = 2.8, fontface = "bold.italic", color = "#A8D0E6") +
+  scale_y_continuous(breaks = tab_plot$y, labels = tab_plot$family, expand = expansion(mult = c(0.04, 0.08))) +
+  scale_x_continuous(expand = expansion(mult = c(0, 0.12))) +
+  labs(x = "Abundance", y = NULL) +
+  coord_cartesian(clip = "off") +
+  theme_classic() +
+  theme(panel.grid.major.x = element_line(color = "grey90", linetype = "dashed"),
+        panel.background = element_rect(fill = "grey98"))
+```
+
+## 2.2. Height and DBH distribuition
+
+### 2.2.1. Height for trees
+
+```{r}
+# Frequency table for tree height
+arv_alt <- freq_tab(arvore, altura)
+
+arv_alt
+```
+
+```{r}
+# histogram for tree Height
+g_arv_alt <- hist_dens(arvore, altura, arv_alt, xlab = "Height (m)")
+
+g_arv_alt
+```
+
+### 2.2.2. DBH for trees
+
+```{r}
+# Frequency table for tree DBH
+arv_dap <- freq_tab(arvore, dap)
+
+arv_dap
+```
+
+```{r}
+# Histogram for tree DBH
+g_arv_dap <- hist_dens(arvore, dap, arv_dap, xlab = "DBH (cm)", fill = "#E6A8A8")
+
+g_arv_dap
+```
+
+### 2.2.3. Height for Arecaceae
+
+```{r}
+# Frequency table for palm height
+palm_alt <- freq_tab(palmeira, altura)
+
+palm_alt
+```
+
+```{r}
+# Table visualization
+g_palm_alt <- hist_dens(arvore, altura, palm_alt, xlab = "Height (m)")
+
+g_palm_alt
+```
+
+### 2.2.4. DBH for Arecaceae
+
+```{r}
+# Frequency table for palm DBH
+palm_dap <- freq_tab(palmeira, dap)
+
+palm_dap
+```
+
+```{r}
+# Table visualization
+g_palm_dap <- hist_dens(palmeira, dap, palm_dap, xlab = "DBH (cm)", fill = "#E6A8A8")
+
+g_palm_dap
+```
+
+```{r}
+# Investigating DBH distribution by Arecaceae genus to evaluate the pattern observed in the histogram
+palmeira %>%
+  filter(!is.na(genus)) %>%
+  add_count(genus, name = "n_genus") %>%
+  filter(n_genus >= sort(unique(n_genus), decreasing = TRUE)[10]) %>%
+  mutate(genus = reorder(genus, -dap, median, decreasing = TRUE)) %>%
+  ggplot(aes(x = genus, y = dap)) +
+  geom_boxplot(fill = "#E6A8A8", alpha = 0.5, outlier.alpha = 0.3) +
+  labs(x = "Genus", y = "DBH (cm)") +
+  scale_y_continuous(breaks = seq(0, 90, by = 10)) +
+  coord_flip() +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        panel.grid.major.x = element_line(color = "grey90", linetype = "dashed"),
+        panel.background = element_rect(fill = "grey95"))
+```
+
+```{r}
+# Median and mean for all palms
+palmeira %>% 
+  mutate(grupo = if_else(!is.na(genus) & genus == "Roystonea", "Roystonea", "Other genera")) %>% 
+  group_by(grupo) %>% 
+  summarise(Median = median(dap), Mean = mean(dap), .groups = "drop")
+```
+
+### 2.2.5. Joining plots
+
+```{r}
+# Setting axis titles
+g_arv_alt  <- g_arv_alt  + labs(x = NULL)
+g_arv_dap  <- g_arv_dap  + labs(x = NULL, y = NULL)
+g_palm_alt <- g_palm_alt
+g_palm_dap <- g_palm_dap + labs(y = NULL)
+```
+
+```{r}
+# Joining plots
+linha_arv <- plot_grid(g_arv_alt, g_arv_dap, ncol = 2, align = "hv")
+linha_palm <- plot_grid(g_palm_alt, g_palm_dap, ncol = 2, align = "hv")
+
+g_hist <- plot_grid(
+  ggdraw() + draw_label("Histograms of trees (n = 3011)", fontface = "bold", size = 14),
+  linha_arv,
+  ggdraw() + draw_label("Histograms of palms (n = 1362)", fontface = "bold", size = 14),
+  linha_palm,
+  ncol = 1,
+  rel_heights = c(0.10, 1, 0.10, 1)
+)
+
+g_hist
+
+```
+
+```{r}
+# Saving figure
+ggsave("histograms_trees_palms.png", plot = g_hist, width = 20, height = 15, units = "cm", dpi = 1200)
+```
+
+## 2.3. Abudance x total basal area
+
+### 2.3.1. For trees
+
+```{r}
+# Summary table for trees
+tab_res_arv <- arvore %>%
+  filter(!is.na(family)) %>%
+  group_by(family) %>%
+  summarise(n = n(), altura_media = mean(altura), altura_max = max(altura), area_basal_total = sum(area_basal), area_basal_media = mean(area_basal)) %>%
+  arrange(desc(area_basal_total))
+
+tab_res_arv
+```
+
+```{r}
+# Ranking abundance and total basal area
+rank_arv <- tab_res_arv %>%
+  filter(n >= 10) %>%
+  mutate(rank_abundancia = rank(-n, ties.method = "first"), rank_area_basal = rank(-area_basal_total, ties.method = "first"))
+
+rank_arv
+```
+
+```{r}
+# Converting table to long format
+rank_arv_long <- rank_arv %>%
+  select(family, rank_abundancia, rank_area_basal) %>%
+  pivot_longer(cols = c(rank_abundancia, rank_area_basal), names_to = "variavel", values_to = "ranking") %>%
+  mutate(variavel = recode(variavel, rank_abundancia = "Abundance", rank_area_basal = "Total basal area"),
+    variavel = factor(variavel, levels = c("Abundance", "Total basal area")))
+```
+
+```{r}
+# Setting color palette
+familias <- sort(unique(rank_arv_long$family))
+
+cores_familias <- colorRampPalette(RColorBrewer::brewer.pal(8, "Dark2"))(length(familias))
+
+names(cores_familias) <- familias
+```
+
+```{r}
+# Visualizing
+bump_arv <- 
+ggplot(rank_arv_long, aes(x = variavel, y = ranking, group = family, color = family)) +
+  geom_line(alpha = 0.6) +
+  geom_point(size = 2) +
+  geom_text(data = rank_arv_long %>% filter(variavel == "Abundance"), aes(label = family), hjust = 1.15, size = 3) +
+  geom_text(data = rank_arv_long %>% filter(variavel == "Total basal area"), aes(label = family), hjust = -0.15, size = 3) +
+  scale_y_reverse(breaks = seq(1, max(rank_arv_long$ranking), by = 1)) +
+  scale_color_manual(values = cores_familias) +
+  coord_cartesian(clip = "off") +
+  labs(x = NULL, y = "Ranking", title = "(A)") +
+  theme_classic() +
+  theme(text = element_text(family = "serif"),
+        legend.position = "none",
+        plot.title = element_text(hjust = -0.04, vjust = -6, face = "bold", size = 15),
+        plot.title.position = "plot",
+        plot.margin = margin(1, 10, 5, 25))
+
+bump_arv
+```
+
+### 2.3.2. For palms
+
+```{r}
+# Summary table for palm
+tab_res_palm <- palmeira %>%
+  filter(!is.na(genus)) %>%
+  group_by(genus) %>%
+  summarise(n = n(), altura_media = mean(altura), altura_max = max(altura), area_basal_total = sum(area_basal), area_basal_media = mean(area_basal)) %>%
+  arrange(desc(area_basal_total))
+
+tab_res_palm
+```
+
+```{r}
+# Ranking abundance and total basal area
+rank_palm <- tab_res_palm %>%
+  filter(n >= 5) %>%
+  mutate(rank_abundancia = rank(-n, ties.method = "first"), rank_area_basal = rank(-area_basal_total, ties.method = "first"))
+
+rank_palm
+```
+
+```{r}
+# Converting table to long
+rank_palm_long <- rank_palm %>%
+  select(genus, rank_abundancia, rank_area_basal) %>%
+  pivot_longer(cols = c(rank_abundancia, rank_area_basal), names_to = "variavel", values_to = "ranking") %>%
+  mutate(variavel = recode(variavel, rank_abundancia = "Abundance", rank_area_basal = "Total basal area"),
+    variavel = factor(variavel, levels = c("Abundance", "Total basal area")))
+```
+
+```{r}
+# Setting color palette
+generos <- sort(unique(rank_palm_long$genus))
+
+cores_genus <- colorRampPalette(RColorBrewer::brewer.pal(8, "Dark2"))(length(generos))
+
+names(cores_genus) <- generos
+```
+
+```{r}
+# Visualizing
+bump_palm <- 
+ggplot(rank_palm_long, aes(x = variavel, y = ranking, group = genus, color = genus)) +
+  geom_line(alpha = 0.6) +
+  geom_point(size = 2) +
+  geom_text(data = rank_palm_long %>% filter(variavel == "Abundance"), aes(label = genus), hjust = 1.15, size = 3) +
+  geom_text(data = rank_palm_long %>% filter(variavel == "Total basal area"), aes(label = genus), hjust = -0.15, size = 3) +
+  scale_y_reverse(breaks = seq(1, max(rank_palm_long$ranking), by = 1)) +
+  scale_color_manual(values = cores_genus) +
+  coord_cartesian(clip = "off") +
+  labs(x = NULL, y = "Ranking", title = "(B)") +
+  theme_classic() +
+  theme(text = element_text(family = "serif"),
+        legend.position = "none",
+        plot.title = element_text(hjust = -0.04, vjust = -6, face = "bold", size = 15),
+        plot.title.position = "plot",
+        plot.margin = margin(1, 10, 5, 25))
+
+bump_palm
+```
+
+### 2.3.3. Joining plots
+
+```{r, fig.width=10.5, fig.height=6}
+# Joining plots
+bump_chart <- plot_grid(bump_arv, bump_palm)
+
+bump_chart
+```
+
+```{r}
+# Saving figure
+ggsave("bump_trees_palms.png", plot = bump_chart, width = 26, height = 15, units = "cm", dpi = 600)
+```
+
+```{r}
+# Table for plotting
+tab_dom <- data_trab %>%
+  filter(!is.na(family), family != "", !is.na(name), name != "", !is.na(area_basal)) %>%
+  count(family, wt = area_basal, name = "family_dominance") %>%
+  left_join(data_trab %>%
+              filter(!is.na(family), family != "", !is.na(name), name != "", !is.na(area_basal)) %>%
+              count(family, name, wt = area_basal, name = "species_dominance") %>%
+              group_by(family) %>%
+              slice_max(species_dominance, n = 1, with_ties = FALSE) %>%
+              ungroup(),
+            by = "family") %>%
+  slice_max(family_dominance, n = 10, with_ties = FALSE) %>%
+  arrange(desc(family_dominance)) %>%
+  rename(most_dominant_species = name) %>%
+  mutate(prop_dominance = species_dominance / family_dominance)
+
+tab_dom
+```
+
+```{r}
+# Plotting the top species percentage of total basal area by family
+tab_dom %>%
+  mutate(family = reorder(family, prop_dominance),
+         label_species = paste0(most_dominant_species, " (", round(prop_dominance * 100, 1), "%)"),
+         label_total = paste0(round(family_dominance, 1), " m²")) %>%
+  ggplot(aes(y = family)) +
+  geom_col(aes(x = 1), fill = "grey85", color = "black", width = 0.75) +
+  geom_col(aes(x = prop_dominance), fill = "#A8D0E6", color = "black", width = 0.45) +
+  geom_text(aes(x = 1, label = label_total), hjust = -0.15, size = 3) +
+  geom_text(aes(x = prop_dominance, label = label_species), hjust = -0.05, size = 2.8, fontface = "italic") +
+  scale_x_continuous(labels = scales::percent_format(accuracy = 1),
+                     limits = c(0, 1.10)) +
+  labs(x = "Proportion of family dominance", y = NULL) +
+  coord_cartesian(clip = "off") +
+  theme_classic() +
+  theme(panel.grid.major.x = element_line(color = "grey90", linetype = "dashed"),
+        panel.background = element_rect(fill = "grey95"),
+        plot.margin = margin(5.5, 80, 5.5, 5.5))
+```
+
+# 3. Association between variables
+
+## 3.1. Botanical families x multistems
+
+```{r}
+# Contingency table
+tab_familia <- table(data_trab$family, data_trab$multicaule_l)
+
+# Checking
+tab_familia
+```
+
+```{r}
+# Contingency table for the 10 most frequent families
+filtro_familia <- unique(tab_familias$family)
+
+# Filtering
+familia_filtro <- data_trab %>% 
+  filter(family %in% filtro_familia)
+
+# Table
+familia_10 <- 
+table(familia_filtro$family, familia_filtro$multicaule_l)
+
+# Checking
+addmargins(familia_10)
+```
+
+```{r}
+# Proportions by family
+prop_fam <- prop.table(familia_10, margin = 1)
+
+round(prop_fam, 2)
+```
+
+```{r}
+# Chi-squared test
+teste_fam <- chisq.test(familia_10)
+
+teste_fam
+```
+
+
+```{r}
+# Expected values
+round(addmargins(teste_fam$expected), 0)
+```
+
+```{r}
+# Standardized residuals
+round(teste_fam$stdres, 2)
+```
+
+```{r}
+# Contribution to chi-square
+contrib_fam <- teste_fam$residuals^2
+round(contrib_fam, 2)
+```
+
+```{r}
+# Pearson coefficient
+coef_cont <- ContCoef(familia_10)
+
+coef_cont
+```
+
+```{r}
+# Cramer's V coefficient
+CramerV(familia_10)
+```
+
+```{r}
+# Visualizing the table
+mosaicplot(familia_10, main = "C = 0.19, p < 0.05", color = c("darkred", "darkblue"), las = 1, cex.axis = 0.6, ylab = "Family", xlab = "Stem condition", dir = c("h", "v"), off = c(15, 3))
+```
+
+```{r}
+# Preparing data from the contingency table
+multicaule_fam <- as.data.frame(familia_10)
+
+names(multicaule_fam) <- c("family", "stem_condition", "n")
+
+multicaule_fam <- multicaule_fam %>%
+  group_by(family) %>%
+  mutate(total = sum(n), prop = 100 * n / total, prop_yes = prop[stem_condition == "Yes"]) %>%
+  ungroup() %>%
+  mutate(family = forcats::fct_reorder(family, prop_yes), stem_condition = factor(stem_condition, levels = c("No", "Yes")))
+
+multicaule_fam
+```
+
+```{r}
+# Plot
+contingency <- 
+ggplot(multicaule_fam, aes(y = family, x = prop, fill = stem_condition)) +
+  geom_col(position = "stack", alpha = 0.8) +
+  geom_text(aes(label = ifelse(prop >= 5, paste0(round(prop, 1), "%"), "")), position = position_stack(vjust = 0.5), size = 3.5, color = "grey90") +
+  geom_vline(aes(xintercept = 13), linetype = "dashed", color = "grey80", linewidth = 1, alpha = 0.4) +
+  scale_fill_manual(values = c("darkred", "darkblue"), labels = c("No", "Yes"),  guide = guide_legend(title = "Multi-stemmed:", reverse = TRUE)) +
+  scale_x_continuous(breaks = c(5, 13, 20, 30, 40, 50, 75, 100)) +
+  labs(y = "Family", x = "Individuals (%)", caption = paste0("χ² = ", round(teste_fam$statistic, 2), "; df = ", teste_fam$parameter, "; p < 0.001; C = ", round(coef_cont, 2))) +
+  theme_classic() +
+  theme(legend.position = "bottom",
+        plot.caption = element_text(hjust = -0.2, vjust = 13.5, size = 9))
+
+contingency
+```
+
+```{r}
+# Saving figure
+ggsave("multistem.png", plot = contingency, width = 20, height = 13, units = "cm", dpi = 1200)
+```
+
+## 3.2. Binomial model for multicaule in Fabaceae
+
+```{r}
+# Filtering the database
+fabaceae <- arvore %>%
+  filter(family == "Fabaceae", !is.na(genus), genus != "") %>%
+  add_count(genus, name = "n_genus") %>%
+  arrange(desc(n_genus), genus) %>%
+  mutate(rank_genus = match(genus, unique(genus))) %>%
+  filter(rank_genus <= 10) %>%
+  mutate(genus = as.factor(genus)) %>%
+  dplyr::select(-n_genus, -rank_genus) %>%
+  droplevels()
+```
+
+```{r}
+# Binomial model
+mod_binom <- glm(multicaule ~ altura + genus, data = fabaceae, family = "binomial")
+```
+
+```{r, fig.height=5.5, fig.width=9}
+# Analysis of residuals
+res_mod_binom <- simulateResiduals(mod_binom, n = 1000)
+plot(res_mod_binom)
+```
+
+```{r}
+# Model analysis of deviance
+anova(mod_binom, test = "Chisq")
+```
+
+```{r}
+# Single term analysis of deviance
+drop1(mod_binom, test = "Chisq")
+```
+
+```{r}
+# Model summary
+summary(mod_binom)
+```
+
+```{r}
+# Predição média da probabilidade de multicaule em função da altura
+pred_altura <- ggpredict(mod_binom, terms = "altura [all]", margin = "empirical")
+
+# Visualizing
+binom_alt <- 
+ggplot() +
+  geom_jitter(data = fabaceae, aes(x = altura, y = multicaule), height = 0.05, width = 0.05, alpha = 0.35) +
+  geom_ribbon(data = pred_altura, aes(x = x, ymin = conf.low, ymax = conf.high), alpha = 0.2) +
+  geom_line(data = pred_altura, aes(x = x, y = predicted), linewidth = 1.2) +
+  scale_y_continuous(limits = c(-0.1, 1.1), breaks = seq(0, 1, 0.2)) +
+  scale_x_continuous(breaks = seq(0, 30, 5)) +
+  labs(x = "Height (m)", y = "Predicted probability of multiple stems", title = "(A)") +
+  theme_classic() +
+  theme(panel.grid.major.x = element_line(color = "grey90", linetype = "dashed"),
+        panel.background = element_rect(fill = "grey97"),
+        plot.title = element_text(hjust = -0.01, vjust = -6, face = "bold", size = 15),
+        plot.title.position = "plot",
+        plot.margin = margin(1, 5, 1, 15))
+
+binom_alt
+```
+
+```{r}
+# Predicting considering genus
+pred_genus <- ggpredict(mod_binom, terms = "genus")
+
+# Visualizing
+binom_spe <- 
+ggplot(pred_genus, aes(x = reorder(x, predicted), y = predicted)) +
+  geom_pointrange(aes(ymin = conf.low, ymax = conf.high)) +
+  coord_flip() +
+  scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.2)) +
+  labs(x = "Genus", y = "Predicted probability of multiple stems", title = "(B)") +
+  theme_classic() +
+  theme(panel.grid.major.x = element_line(color = "grey90", linetype = "dashed"),
+        panel.background = element_rect(fill = "grey97"),
+        plot.title = element_text(hjust = -0.01, vjust = -6, face = "bold", size = 15),
+        plot.title.position = "plot",
+        plot.margin = margin(1, 5, 1, 15))
+
+binom_spe
+```
+
+```{r, fig.height=4, fig.width=10}
+# Joining plots
+binom_fab <- plot_grid(binom_alt, binom_spe)
+
+binom_fab
+```
+
+```{r}
+# Saving figure
+ggsave("binomial.png", plot = binom_fab, width = 27, height = 12, units = "cm", dpi = 600)
+```
+
+## 3.3. Scatterplot of Height and DBH
+
+```{r}
+# Setting interest groups 
+data_trab <- data_trab %>%
+  mutate(grupo_modelo = case_when(
+    genus == "Roystonea" ~ "Roystonea",
+    genus == "Carapa" ~ "Carapa",
+    TRUE ~ "Other genera"),
+    grupo_modelo = factor(grupo_modelo, levels = c("Carapa", "Roystonea", "Other genera")))
+
+# Checking
+data_trab %>%
+  group_by(grupo_modelo) %>% 
+  summarise(n = n(), alt = mean(altura), dap = mean(dap)) %>% 
+   mutate(prop = n / sum(n))
+```
+
+```{r}
+# Scatterplot of height x DBH
+scatter <- 
+ggplot() +
+  geom_point(data = data_trab %>% filter(grupo_modelo == "Other genera"), aes(x = dap, y = altura, color = grupo_modelo), alpha = 0.2, size = 1.2) +
+  geom_point(data = data_trab %>% filter(grupo_modelo != "Other genera"), aes(x = dap, y = altura, color = grupo_modelo), alpha = 0.7, size = 1.7) +
+  labs(x = "DBH (cm)", y = "Height (m)", color = "Genus:") +
+  scale_color_manual(values = c("Carapa" = "darkblue", "Roystonea" = "darkred", "Other genera" = "grey30"), breaks = c("Carapa", "Roystonea", "Other genera")) +
+  theme_classic() +
+  theme(panel.grid.major.x = element_line(color = "grey90", linetype = "dashed"),
+        panel.grid.major.y = element_line(color = "grey90", linetype = "dashed"),
+        panel.background = element_rect(fill = "grey97"))
+
+scatter
+```
+
+```{r}
+# Saving figure
+ggsave("scatter.png", plot = scatter, width = 20, height = 12, units = "cm", dpi = 600)
+```
+
+# 4. Models for the association between height and diameter
+
+## 4.1. Roystonea
+
+```{r}
+# Converting species to factor
+roystonea <- roystonea %>%
+  mutate(species = factor(species))
+```
+
+```{r}
+# Summary for Roystonea species
+roystonea %>% 
+  group_by(species) %>% 
+  summarise(n = n(), alt = mean(altura), dap = mean(dap), sle = mean(rel_hd)) %>% 
+  mutate(prop = n/sum(n))
+```
+
+### 4.1.1. Linear model
+
+```{r}
+# Linear model
+mod1 <- lm(altura ~ dap + species, data = roystonea)
+```
+
+```{r, fig.height=6, fig.width=9}
+# Residuals plots
+par(mfrow = c(2, 2))
+plot(mod1)
+```
+
+```{r, fig.height = 5, fig.width = 7}
+# Analysis of residuals
+res_mod1 <- simulateResiduals(mod1, n = 1000)
+plot(res_mod1)
+```
+
+### 4.1.2. Log model
+
+```{r}
+# Log model
+mod_log <- lm(altura ~ log(dap) + species, data = roystonea)
+```
+
+```{r, fig.height=6, fig.width=9}
+# Residuals plots
+par(mfrow = c(2, 2))
+plot(mod_log)
+```
+
+```{r, fig.height = 5, fig.width = 7}
+# Analysis of residuals
+res_mod_log <- simulateResiduals(mod_log, n = 1000)
+plot(res_mod_log)
+```
+
+### 4.1.3. Quadratic model
+
+```{r}
+# Quadratic model
+mod2 <- lm(altura ~ poly(dap, 2) + species, data = roystonea)
+```
+
+```{r, fig.height=6, fig.width=9}
+# Residuals plots
+par(mfrow = c(2, 2))
+plot(mod2)
+```
+
+```{r, fig.height = 5, fig.width = 7}
+# Analysis of residuals
+res_mod2 <- simulateResiduals(mod2, n = 1000)
+plot(res_mod2)
+```
+
+```{r}
+# ANOVA for comparing models
+anova(mod1, mod_log, mod2)
+```
+
+### 4.1.4. Quadratic with interaction
+
+```{r}
+# Quadratic model
+mod2_int <- lm(altura ~ species * poly(dap, 2), data = roystonea)
+```
+
+```{r, fig.height=6, fig.width=9}
+# Residuals plots
+par(mfrow = c(2, 2))
+plot(mod2_int)
+```
+
+```{r, fig.height = 5, fig.width = 7}
+# Analysis of residuals
+res_mod2_int <- simulateResiduals(mod2_int, n = 1000)
+plot(res_mod2_int)
+```
+
+```{r}
+# Comparing model with and without interaction
+anova(mod2, mod2_int)
+```
+
+```{r}
+# Interaction model summary
+summary(mod2_int)
+```
+
+```{r}
+# Interaction model ANOVA
+anova(mod2_int)
+```
+
+### 4.1.5. Results
+
+```{r}
+# Means comparison between species
+emm_sp2 <- emmeans(mod2_int, ~ species | poly(dap, 2), at = list(dap = mean(roystonea$dap, na.rm = TRUE)))
+
+# Multicomparison
+multcomp::cld(emm_sp2, adjust = "sidak", Letters = letters, decreasing = T)
+```
+
+```{r}
+# Model equations
+
+# Equivalent raw polynomial model used only to extract interpretable equations
+mod2_int_raw <- lm(altura ~ species * (dap + I(dap^2)), data = roystonea)
+
+# Checking equivalence between predictions
+max(abs(predict(mod2_int, newdata = roystonea) - predict(mod2_int_raw, newdata = roystonea)))
+```
+
+
+```{r}
+# Extracting coefficients
+b <- coef(mod2_int_raw)
+
+# Equations by species
+eq_species <- tibble(species = c("borinquena", "oleracea", "regia"),
+  intercept = c(
+    b["(Intercept)"],
+    b["(Intercept)"] + b["speciesoleracea"],
+    b["(Intercept)"] + b["speciesregia"]),
+  
+  beta_dap = c(
+    b["dap"],
+    b["dap"] + b["speciesoleracea:dap"],
+    b["dap"] + b["speciesregia:dap"]),
+  
+  beta_dap2 = c(
+    b["I(dap^2)"],
+    b["I(dap^2)"] + b["speciesoleracea:I(dap^2)"],
+    b["I(dap^2)"] + b["speciesregia:I(dap^2)"])) %>%
+  
+  mutate(equation = paste0("Height = ", round(intercept, 2), ifelse(beta_dap >= 0, " + ", " - "), abs(round(beta_dap, 3)), " DBH", ifelse(beta_dap2 >= 0, " + ", " - "), abs(round(beta_dap2, 5)), " DBH²"))
+
+# Checking
+eq_species %>%
+  select(species, equation)
+```
+
+
+```{r}
+# Generating dataframe with values to predict
+pred_species <- roystonea %>%
+  group_by(species) %>%
+  summarise(dap_min = min(dap), dap_max = max(dap), .groups = "drop") %>%
+  group_by(species) %>%
+  reframe(dap = seq(dap_min, dap_max, length.out = 100))
+```
+
+```{r}
+# Predicting within the DBH range observed for each species
+pred_fit <- predict(mod2_int, newdata = pred_species, interval = "confidence")
+
+pred_species <- pred_species %>%
+  mutate(altura_pred = pred_fit[, "fit"], altura_lwr  = pred_fit[, "lwr"], altura_upr  = pred_fit[, "upr"])
+```
+
+```{r}
+# Species labels for legend
+species_labels <- c(borinquena = "italic('Roystonea borinquena')", oleracea   = "italic('Roystonea oleracea')", regia      = "italic('Roystonea regia')")
+
+# Plotting the results
+roys <- 
+ggplot(roystonea, aes(x = dap, y = altura, color = species)) +
+  geom_point(alpha = 0.45, size = 1.5) +
+  geom_ribbon(data = pred_species, aes(x = dap, ymin = altura_lwr, ymax = altura_upr, fill = species, group = species), alpha = 0.15, color = NA, inherit.aes = FALSE) +
+  geom_line(data = pred_species, aes(x = dap, y = altura_pred, color = species, group = species), linewidth = 1) +
+  scale_color_discrete(breaks = names(species_labels), labels = parse(text = species_labels)) +
+  scale_x_continuous(breaks = seq(10, 90, 10)) +
+  scale_y_continuous(breaks = seq(0, 45, 7)) +
+  labs(x = "DBH (cm)", y = "Height (m)", color = "Species", fill = "Species") +
+  guides(fill = "none") +
+  theme_classic() +
+  theme(legend.position = "bottom",
+        panel.grid.major.x = element_line(color = "grey90", linetype = "dashed"),
+        panel.grid.major.y = element_line(color = "grey90", linetype = "dashed"),
+        panel.background = element_rect(fill = "grey97"))
+
+roys
+```
+
+```{r}
+# Saving figure
+ggsave("roystonea.png", plot = roys, width = 20, height = 12, units = "cm", dpi = 600)
+```
+
+
+## 4.2. Carapa
+
+### 4.2.1. Linear model
+
+```{r}
+# Linear model
+mod1c <- lm(altura ~ dap, data = carapa)
+```
+
+
+```{r, fig.height=6, fig.width=9}
+# Residuals plots
+par(mfrow = c(2, 2))
+plot(mod1c)
+```
+
+
+```{r, fig.height = 5, fig.width = 7}
+# Analysis of residuals
+res_mod1c <- simulateResiduals(mod1c, n = 1000)
+plot(res_mod1c)
+```
+
+### 2.2.2. Log model
+
+```{r}
+# Log model
+mod_logc <- lm(altura ~ log(dap), data = carapa)
+```
+
+
+```{r, fig.height=6, fig.width=9}
+# Residuals plots
+par(mfrow = c(2, 2))
+plot(mod_logc)
+```
+
+
+```{r, fig.height = 5, fig.width = 7}
+# Analysis of residuals
+res_mod_logc <- simulateResiduals(mod_logc, n = 1000)
+plot(res_mod_logc)
+```
+
+```{r}
+# log model ANOVA
+anova(mod_logc)
+```
+
+```{r}
+# log model summary
+summary(mod_logc)
+```
+
+
+### 2.2.3. Quadratic model
+
+```{r}
+# Quadratic model
+mod2c <- lm(altura ~ dap + I(dap^2), data = carapa)
+```
+
+
+```{r, fig.height=6, fig.width=9}
+# Residuals plots
+par(mfrow = c(2, 2))
+plot(mod2c)
+```
+
+
+```{r, fig.height = 5, fig.width = 7}
+# Analysis of residuals
+res_mod2c <- simulateResiduals(mod2c, n = 1000)
+plot(res_mod2c)
+```
+
+```{r}
+# Model comparison
+AIC(mod1c, mod_logc, mod2c)
+BIC(mod1c, mod_logc, mod2c)
+```
+
+### 2.2.4. Mixed effects log model
+
+```{r}
+# Filtering for beds with three or more trees
+carapa_f <- carapa %>% 
+  add_count(sec_cant, name = "n_sec_cant") %>% 
+  filter(n_sec_cant >= 3) %>% 
+  mutate(sec_cant = factor(sec_cant))
+```
+
+
+```{r}
+# Summary per bed
+carapa_f %>% 
+  group_by(sec_cant) %>% 
+  summarise(n = n(), alt = mean(altura), dap = mean(dap), sle = mean(rel_hd)) %>% 
+  mutate(prop = n/sum(n)) %>% 
+  arrange(desc(n))
+```
+
+
+```{r}
+# log model with beds random effects
+mod1m <- lmer(altura ~ log(dap) + (1 | sec_cant), data = carapa_f, REML = F)
+```
+
+
+```{r, fig.height=5, fig.width=7}
+# Analysis of residuals
+res_mod1m <- simulateResiduals(mod1m, n = 1000)
+plot(res_mod1m)
+```
+
+
+```{r}
+# Checking random effects residual
+plotResiduals(res_mod1m, form = carapa_f$sec_cant)
+```
+
+
+```{r}
+# Refitting model for comparison
+mod_logc_f <- lm(altura ~ log(dap), data = carapa_f)
+```
+
+
+```{r}
+# Comparing models without and with random effects
+AIC(mod_logc_f, mod1m)
+BIC(mod_logc_f, mod1m)
+```
+
+```{r}
+# log model R²
+r2(mod_logc)
+```
+
+```{r}
+# mixed model R²
+r2(mod1m)
+```
+
+```{r}
+# Checking for random effects significance
+ranova(mod1m)
+```
+
+
+### 2.2.5. Mixed effects quadratic model
+
+```{r}
+# Quadratic model with beds random effects
+mod2m <- lmer(altura ~ poly(dap, 2) + (1 | sec_cant), data = carapa_f, REML = F)
+```
+
+```{r, fig.height=5, fig.width=7}
+# Analysis of residuals
+res_mod2m <- simulateResiduals(mod2m, n = 1000)
+plot(res_mod2m)
+```
+
+
+```{r}
+# Checking random effects residual
+plotResiduals(res_mod2m, form = carapa_f$sec_cant)
+```
+
+
+```{r}
+# Comparing the best models
+AIC(mod_logc_f, mod1m, mod2m)
+BIC(mod_logc_f, mod1m, mod2m)
+```
+
+
+```{r}
+# log model R²
+r2(mod_logc_f)
+```
+
+
+```{r}
+# Quadratic model R²
+r2(mod2m)
+```
+
+```{r}
+# Random effects significance
+ranova(mod2m)
+```
+
+
+```{r}
+# Refitting with REML = T
+mod2m <- lmer(altura ~ poly(dap, 2) + (1 | sec_cant), data = carapa_f, REML = T)
+```
+
+```{r}
+# Mixed model summary
+summary(mod2m)
+```
+
+```{r}
+# Mixed model summary
+anova(mod2m)
+```
+
+
+```{r}
+# Mixed model summary
+summary(mod2m)
+```
+
+```{r}
+# Random effects significance
+ranova(mod2m)
+```
+
+```{r}
+# Variance and correlation components
+VarCorr(mod2m)
+```
+
+
+```{r}
+# Intraclass Correlation Coefficient
+icc(mod2m)
+```
+
+
+### 2.2.6. Results visualization
+
+```{r}
+# Model equations
+
+# Equivalent raw polynomial model used only to extract interpretable equations
+mod2m_raw <- lmer(altura ~ dap + I(dap^2) + (1 | sec_cant), data = carapa_f, REML = T, control = lmerControl(check.scaleX = "ignore"))
+
+# Checking equivalence between predictions
+max(abs(predict(mod2m) - predict(mod2m_raw)))
+```
+
+
+```{r}
+# Fixed-effect coefficients
+b <- fixef(mod2m_raw)
+
+# Population-level equation
+eq_carapa_fixed <- tibble(
+  model = "Population-level curve",
+  intercept = b["(Intercept)"],
+  beta_dap = b["dap"],
+  beta_dap2 = b["I(dap^2)"]) %>%
+  
+  mutate(equation = paste0("Height = ", round(intercept, 2), ifelse(beta_dap >= 0, " + ", " - "), abs(round(beta_dap, 3)), " DBH", ifelse(beta_dap2 >= 0, " + ", " - "), abs(round(beta_dap2, 5)), " DBH²"))
+
+eq_carapa_fixed
+```
+
+
+```{r}
+# Random intercepts by arboretum bed
+ran_bed <- ranef(mod2m_raw)$sec_cant %>%
+  tibble::rownames_to_column("sec_cant") %>%
+  rename(random_intercept = `(Intercept)`)
+
+# Bed-specific equations
+eq_carapa_bed <- ran_bed %>%
+  mutate(intercept = b["(Intercept)"] + random_intercept,
+    beta_dap = b["dap"],
+    beta_dap2 = b["I(dap^2)"],
+    equation = paste0(sec_cant, ": Height = ",
+      round(intercept, 2),
+      ifelse(beta_dap >= 0, " + ", " - "),
+      abs(round(beta_dap, 3)), " DBH",
+      ifelse(beta_dap2 >= 0, " + ", " - "),
+      abs(round(beta_dap2, 5)), " DBH²"))
+
+# Checking
+eq_carapa_bed %>%
+  select(sec_cant, random_intercept, equation) %>% 
+  arrange(desc(random_intercept))
+```
+
+
+
+
+```{r}
+# Predicting for plotting
+pred_mod2m <- ggpredict(mod2m, terms = "dap [all]", type = "fixed")
+
+# Visualizing
+ggplot(pred_mod2m, aes(x = x, y = predicted)) +
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high), alpha = 0.2) +
+  geom_line(linewidth = 1.2) +
+  geom_point(data = carapa_f, aes(x = dap, y = altura), inherit.aes = FALSE, alpha = 0.7) +
+  labs(x = "DAP", y = "Altura predita", title = "") +
+  theme_classic()
+```
+
+```{r}
+# Random effects of arboretum beds
+efeito_cant <- ranef(mod2m)$sec_cant %>%
+  as.data.frame() %>%
+  rownames_to_column("sec_cant") %>%
+  rename(efeito_canteiro = `(Intercept)`)
+
+# DBH sequence for prediction
+dap_seq <- seq(min(carapa_f$dap, na.rm = TRUE), max(carapa_f$dap, na.rm = TRUE), length.out = 300)
+```
+
+```{r}
+# Global mean curve
+pred_global <- tibble(dap = dap_seq) %>%
+  mutate(altura_pred = predict(mod2m, newdata = ., re.form = NA))
+```
+
+```{r}
+# Predicted curves by arboretum bed, using only observed DBH range in each bed
+pred_cant <- carapa_f %>%
+  group_by(sec_cant) %>%
+  group_modify(~ tibble(dap = seq(min(.x$dap, na.rm = TRUE), max(.x$dap, na.rm = TRUE), length.out = 300))) %>%
+  ungroup() %>%
+  mutate(altura_pred = predict(mod2m, newdata = ., re.form = NULL)) %>%
+  left_join(efeito_cant, by = "sec_cant")
+```
+
+
+```{r}
+# Plot with points, bed-specific curves, and population-level curve
+carapa <- 
+ggplot(carapa_f, aes(dap, altura)) +
+  geom_point(alpha = 0.45, size = 1.5, color = "gray45") +
+  geom_line(data = pred_cant, aes(y = altura_pred, group = sec_cant), color = "gray75", linewidth = 0.6, alpha = 0.8) +
+  geom_line(data = pred_global, aes(x = dap, y = altura_pred), inherit.aes = FALSE, linewidth = 1.3, color = "gray20") +
+  scale_y_continuous(limits = c(0, NA), breaks = seq(0, 25, 5)) +
+  scale_x_continuous(limits = c(0, NA), breaks = seq(0, 110, 15)) +
+  labs(x = "DBH (cm)", y = "Height (m)", title = "(A)") +
+  theme_classic() +
+  theme(panel.grid.major.x = element_line(color = "grey90", linetype = "dashed"),
+        panel.grid.major.y = element_line(color = "grey90", linetype = "dashed"),
+        panel.background = element_rect(fill = "grey97"),
+        plot.title = element_text(hjust = -0.02, vjust = -4, face = "bold", size = 15),
+        plot.title.position = "plot",
+        plot.margin = margin(1, 5, 1, 15))
+
+carapa
+```
+
+
+```{r}
+# Extracting random intercepts for arboretum beds
+rank_canteiros <- ranef(mod2m)$sec_cant %>%
+  as.data.frame() %>%
+  rownames_to_column("sec_cant") %>%
+  rename(efeito_canteiro = `(Intercept)`) %>%
+  arrange(desc(efeito_canteiro)) %>%
+  mutate(rank = row_number(), interpretacao = case_when(
+      efeito_canteiro > 0 ~ "Acima da média",
+      efeito_canteiro < 0 ~ "Abaixo da média",
+      TRUE ~ "Na média"))
+```
+
+
+```{r}
+# Visualizing
+canteiro <- 
+ggplot(rank_canteiros, aes(x = reorder(sec_cant, efeito_canteiro), y = efeito_canteiro)) +
+  geom_col() +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  coord_flip() +
+  labs(x = "Arboretum bed", y = "Estimated random intercept", title = "(B)") +
+  theme_classic() +
+  theme(panel.background = element_rect(fill = "grey97"),
+        plot.title = element_text(hjust = -0.02, vjust = -4, face = "bold", size = 15),
+        plot.title.position = "plot",
+        plot.margin = margin(1, 5, 1, 15))
+
+canteiro
+```
+
+
+```{r, fig.height=6, fig.width=14}
+# Joining plots
+car_mix <- plot_grid(carapa, canteiro)
+
+car_mix
+```
+
+
+```{r}
+# Saving figure
+ggsave("carapa.png", plot = car_mix, width = 24, height = 10, units = "cm", dpi = 600)
+```
