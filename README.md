@@ -145,9 +145,3 @@ For questions about the data, analyses, or study, please contact:
 Rio de Janeiro Botanical Garden Research Institute
 Email: [jorge.alonso@jbrj.gov.br](mailto:jorge.alonso@jbrj.gov.br)
 
-
-https://jmalonso55.github.io/Applied-Statistics-for-a-Tropical-Arboretum/analysis/1_a_data_preprocessing.html
-
-https://jmalonso55.github.io/Applied-Statistics-for-a-Tropical-Arboretum/analysis/2_descriptive_analysis.html
-
-https://jmalonso55.github.io/Applied-Statistics-for-a-Tropical-Arboretum/analysis/3_probability_random_variables.html
