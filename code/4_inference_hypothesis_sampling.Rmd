@@ -1,0 +1,780 @@
+---
+title: "Inference, hypothesis testing, and sampling"
+author: "Jorge Alonso"
+date: "2026-05-25"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    code_folding: show
+    self_contained: true
+---
+
+# 1. Preparing
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 7,
+  fig.height = 5,
+  dpi = 300)
+```
+
+## 1.1. Loading packages and data
+
+```{r, message = FALSE}
+# Loading packages
+library(tidyverse)
+library(patchwork)
+library(DescTools)
+library(infer)
+library(car)
+```
+
+```{r, message=FALSE, warning=FALSE}
+# Cleaning memory
+rm(list = ls(all = TRUE))
+gc()
+```
+
+```{r}
+# Database link
+processed_url <- "https://raw.githubusercontent.com/jmalonso55/Applied-Statistics-for-a-Tropical-Arboretum/refs/heads/main/data/processed_data.csv"
+```
+
+
+```{r}
+# Loading data
+data_trab <- read.csv(processed_url, sep = ",")
+
+# Checking
+summary(data_trab)
+```
+
+## 1.2. Functions
+
+```{r}
+# Coefficient of variation function
+cv <- function(x) {
+  sd(x) / mean(x) * 100
+  }
+```
+
+
+```{r}
+# Function for descriptive statistics of height
+summary_height <- function(data) {
+  data %>% summarise(n = n(), mean_height = mean(altura), sd_height = sd(altura), cv_height = cv(altura), median_height = median(altura))
+  }
+```
+
+
+```{r}
+# Function to compare a sample with the reference population
+compare_sample <- function(sample_data, population_data, var) {
+  
+  pop_values <- population_data %>% pull({{ var }})
+  sample_values <- sample_data %>% pull({{ var }})
+  
+  tibble(statistic = c("mean", "median", "sd", "cv", "q25", "q75", "p90", "p95"),
+    population = c(mean(pop_values), median(pop_values), sd(pop_values), cv(pop_values), quantile(pop_values, 0.25), quantile(pop_values, 0.75), quantile(pop_values, 0.90), quantile(pop_values, 0.95)),
+    sample = c(mean(sample_values), median(sample_values), sd(sample_values), cv(sample_values), quantile(sample_values, 0.25), quantile(sample_values, 0.75), quantile(sample_values, 0.90), quantile(sample_values, 0.95))) %>%
+    mutate(absolute_error = sample - population, relative_error_percent = absolute_error / population * 100)
+}
+```
+
+
+
+# 2. Population and sample
+
+## 2.1. Population parameters: mean, standard deviation, and distribution
+
+```{r}
+# Random sample of 50 plants
+set.seed(123)
+amostra_50 <- data_trab %>%
+  slice_sample(n = 50)
+```
+
+```{r, fig.width = 8, fig.height = 4}
+# Comparing the height distribution in the reference population and in a random sample
+
+# Common x-axis limits
+x_lim <- range(data_trab$altura)
+
+# Population histogram
+hist_pop <- 
+  ggplot(data_trab, aes(x = altura)) +
+  geom_histogram(aes(y = after_stat(density)), bins = 10, fill = "#A8D0E6", color = "black") +
+  coord_cartesian(xlim = x_lim) +
+  labs(x = "Height (m)", y = "Density") +
+  scale_y_continuous(expand = c(0, 0)) +
+  theme_classic()
+
+# Sample histogram
+hist_amo <-  
+  ggplot(amostra_50, aes(x = altura)) +
+  geom_histogram(aes(y = after_stat(density)), bins = 10, fill = "#A8D0E6", color = "black") +
+  coord_cartesian(xlim = x_lim) +
+  labs(x = "Height (m)", y = "Density") +
+  scale_y_continuous(expand = c(0, 0)) +
+  theme_classic()
+
+# Visualizing
+hist_pop <- hist_pop + ggtitle("Reference population")
+hist_amo <- hist_amo + ggtitle("Random sample, n = 50")
+
+hist_pop + hist_amo
+```
+
+```{r}
+# Parameter: population mean
+# For didactic purposes, the census dataset is treated as the reference population.
+m_pop <- mean(data_trab$altura)
+paste("Parameter - Population mean =", round(m_pop, 2), "m")
+
+
+# Estimate: sample mean
+# The estimator is the sample mean; the estimate is the value obtained in this sample.
+m_amo <- mean(amostra_50$altura)
+paste("Estimate - Sample mean =", round(m_amo, 2), "m")
+
+
+# Sampling error for this specific sample
+erro_amostral <- m_amo - m_pop
+paste("Sampling error =", round(erro_amostral, 2), "m")
+```
+
+```{r}
+# Parameter: population standard deviation
+sd_pop <- sqrt(sum((data_trab$altura - mean(data_trab$altura))^2) /
+    sum(!is.na(data_trab$altura)))
+paste("Parameter - Population standard deviation =", round(sd_pop, 2), "m")
+
+# Estimate: sample standard deviation
+sd_amo <- sd(amostra_50$altura, na.rm = TRUE)
+paste("Estimate - Sample standard deviation =", round(sd_amo, 2), "m")
+```
+
+## 2.2. Exploring properties of estimators
+
+```{r}
+# Repeated sampling to evaluate the behavior of the sample mean
+set.seed(123)
+
+estimativas <- tibble(n_amostral = c(5, 25, 100)) %>% 
+  mutate(estimativas = map(n_amostral, ~ replicate(n = 1000, expr = mean(sample(data_trab$altura, size = .x, replace = FALSE))))) %>%
+  unnest_longer(estimativas) %>%
+  group_by(n_amostral) %>%
+  mutate(simulacao = row_number()) %>%
+  ungroup()
+
+# Checking the behavior of the estimator
+estimativas %>% 
+  group_by(n_amostral) %>% 
+  reframe(mean_estimate = mean(estimativas), bias = mean(estimativas) - m_pop, sd_estimate = sd(estimativas))
+```
+
+
+```{r}
+# Visualizing the sampling distribution of the sample mean
+estimativas %>% 
+  mutate(n_amostral = factor(n_amostral, levels = c(100, 25, 5), labels = c("n = 100", "n = 25", "n = 5"))) %>%
+  ggplot(aes(x = estimativas, color = n_amostral)) +
+  geom_density(linewidth = 1) +
+  geom_vline(xintercept = m_pop, linetype = "dashed") +
+  coord_cartesian(ylim = c(0, 0.6)) +
+  labs(x = "Height (m)", y = "Density", color = NULL) +
+  theme_classic() +
+  theme(legend.position = "bottom",
+    legend.background = element_rect(fill = "white", color = NA))
+```
+
+As the sample size increases, the sampling distribution of the sample mean becomes more concentrated around the population mean. This illustrates that the sample mean is a consistent estimator of the population mean.
+
+## 2.3. Central Limit Theorem and sampling distributions
+
+```{r}
+# Population parameter: proportion of multi-stemmed plants
+mul_pop <- mean(data_trab$multicaule)
+
+# Generating repeated random samples
+# For a binary variable, the sample mean corresponds to the sample proportion.
+set.seed(123)
+amostras_mul <- tibble(amostra = 1:1000) %>%
+  mutate(dados = map(amostra, ~ data_trab %>% 
+                       slice_sample(n = 100, replace = TRUE))) %>%
+  unnest(dados)
+```
+
+
+```{r}
+# Calculating the sample proportion of multi-stemmed plants in each sample
+estimativas_mul <- amostras_mul %>%
+  group_by(amostra) %>%
+  summarise(n = n(), prop_multicaule = mean(multicaule), sd_multicaule = sd(multicaule), .groups = "drop")
+
+head(estimativas_mul, 10)
+```
+
+```{r}
+# Summary of the simulated sampling distribution
+estimativas_mul %>%
+  summarise(mean_of_sample_proportions = mean(prop_multicaule), sd_of_sample_proportions = sd(prop_multicaule), population_proportion = mul_pop)
+```
+
+```{r}
+# Visualizing the sampling distribution of the sample proportion
+ggplot(estimativas_mul, aes(x = prop_multicaule)) +
+  geom_histogram(aes(y = after_stat(density)), bins = 24, fill = "#A8D0E6", color = "black") +
+  geom_density(linewidth = 1) +
+  geom_vline(xintercept = mul_pop, linetype = "dashed", linewidth = 1) +
+  labs(x = "Sample proportion of multi-stemmed plants", y = "Density", title = "Sampling distribution of the sample proportion", subtitle = "1,000 samples of 100 plants") +
+  theme_classic()
+```
+
+
+Because multicaule is a binary variable, its sample mean represents the sample proportion of multi-stemmed plants. The simulated distribution shows how this proportion varies across repeated samples. According to the Central Limit Theorem, as the sample size increases, the sampling distribution of the sample mean tends to become approximately normal, even when the original variable is binary.
+
+
+# 3. Confidence intervals
+
+## 3.1. Confidence interval for the mean
+
+```{r}
+# Confidence interval for the mean height based on one random sample of 50 plants
+ic_50 <- MeanCI(amostra_50$altura, conf.level = 0.95)
+ic_50
+```
+
+```{r}
+# Checking whether the confidence interval contains the population mean
+ic_50["lwr.ci"] <= m_pop & ic_50["upr.ci"] >= m_pop
+```
+
+## 3.2. Confidence intervals and coverage
+
+```{r}
+# Simulating several confidence intervals from repeated samples
+set.seed(123)
+ic_sim <- tibble(amostra = 1:100) %>%
+  mutate(dados = map(amostra, ~ sample(data_trab$altura, size = 50, replace = FALSE)), ic = map(dados, ~ MeanCI(.x, conf.level = 0.95))) %>%
+  mutate(media = map_dbl(ic, ~ .x["mean"]), lower = map_dbl(ic, ~ .x["lwr.ci"]), upper = map_dbl(ic, ~ .x["upr.ci"]), contains_mean = lower <= m_pop & upper >= m_pop) %>%
+  select(amostra, media, lower, upper, contains_mean)
+
+head(ic_sim)
+```
+
+
+```{r}
+# Proportion of confidence intervals that contain the population mean
+ic_sim %>%
+  summarise(n_intervals = n(), confidence_level = 0.95, coverage = mean(contains_mean))
+```
+
+
+## 3.3. Effect of the confidence level on interval width
+
+```{r}
+# Comparing confidence intervals with different confidence levels
+# The same random sample is used in all cases.
+ic_levels <- tibble(confidence_level = c(0.90, 0.95, 0.99)) %>%
+  mutate(ic = map(confidence_level, ~ MeanCI(amostra_50$altura, conf.level = .x)), mean = map_dbl(ic, ~ .x["mean"]), lower = map_dbl(ic, ~ .x["lwr.ci"]), upper = map_dbl(ic, ~ .x["upr.ci"]), width = upper - lower, contains_population_mean = lower <= m_pop & upper >= m_pop) %>%
+  select(confidence_level, mean, lower, upper, width, contains_population_mean)
+
+ic_levels
+```
+
+
+```{r}
+# Visualizing the effect of the confidence level on interval width
+ggplot(ic_levels, aes(x = factor(confidence_level), y = mean)) +
+  geom_hline(yintercept = m_pop, linetype = "dashed", linewidth = 1) +
+  geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.15) +
+  geom_point(size = 2) +
+  labs(x = "Confidence level", y = "Mean height (m)", title = "Effect of confidence level on interval width", subtitle = "Confidence intervals based on the same random sample of 50 plants") +
+  theme_classic()
+```
+
+
+This section illustrates how confidence intervals quantify the uncertainty of sample-based estimates. The census dataset is treated as the reference population, allowing the true population mean to be compared with intervals calculated from random samples. This makes it possible to show that a single confidence interval either contains or does not contain the population mean, whereas the confidence level refers to the long-term proportion of intervals that would contain the parameter under repeated sampling. The section also demonstrates that higher confidence levels produce wider intervals for the same sample because they require a larger margin of error.
+
+
+# 4. Hypothesis testing
+
+## 4.1. Comparing one group with a reference value from the arboretum
+
+### 4.1.1. Non-parametric test: height in bed 26F
+
+```{r}
+# Filtering the 26F bed and the remaining arboretum records
+canteiro_26F <- data_trab %>% 
+  filter(sec_cant == "26F")
+
+menos_26F <- data_trab %>% 
+  filter(sec_cant != "26F")
+```
+
+
+```{r}
+# Descriptive statistics for the 26F bed
+summary_height(canteiro_26F)
+```
+
+
+```{r}
+# Descriptive statistics for the remaining arboretum records
+summary_height(menos_26F)
+```
+
+
+```{r}
+# Checking normality in the 26F bed
+shapiro.test(canteiro_26F$altura)
+```
+
+```{r}
+# Graphical assessment of normality
+qqnorm(canteiro_26F$altura, main = "", xlab = "Theoretical quantiles", ylab = "Sample quantiles")
+qqline(canteiro_26F$altura, col = "red", lwd = 2)
+```
+
+
+```{r}
+# Testing whether height values in the 26F bed are greater than the median height of the remaining arboretum records
+mediana_ref_26F <- median(menos_26F$altura)
+
+wilcox.test(canteiro_26F$altura, mu = mediana_ref_26F, alternative = "greater")
+```
+
+
+### 4.1.2. Parametric test: height in Moraceae
+
+
+```{r}
+# Filtering Moraceae and the remaining arboretum records
+moraceae <- data_trab %>% 
+  filter(family == "Moraceae")
+
+sem_moraceae <- data_trab %>% 
+  filter(family != "Moraceae")
+```
+
+
+```{r}
+# Descriptive statistics for Moraceae
+summary_height(moraceae)
+```
+
+
+```{r}
+# Descriptive statistics for the remaining arboretum records
+summary_height(sem_moraceae)
+```
+
+
+```{r}
+# Checking normality in Moraceae
+shapiro.test(moraceae$altura)
+```
+
+```{r}
+# Graphical assessment of normality
+qqnorm(moraceae$altura, main = "", xlab = "Theoretical quantiles", ylab = "Sample quantiles")
+qqline(moraceae$altura, col = "red", lwd = 2)
+```
+
+
+```{r}
+# Testing whether the mean height of Moraceae differs from the mean height of the remaining arboretum records
+media_ref_moraceae <- mean(sem_moraceae$altura)
+
+t.test(moraceae$altura, mu = media_ref_moraceae, alternative = "two.sided")
+```
+
+```{r}
+# Aplicando o teste t
+t.test(moraceae$altura, mu = 14.22868, alternative = "two.sided")
+```
+
+## 4.2. Comparing the mean of two groups
+
+```{r}
+# Filtering Euphorbiaceae and Moraceae
+data_fam <- data_trab %>% 
+  filter(family %in% c("Moraceae", "Euphorbiaceae"))
+```
+
+
+```{r}
+# Descriptive statistics by family
+data_fam %>% 
+  group_by(family) %>% 
+  summary_height()
+```
+
+
+```{r}
+# Checking taxonomic composition by genus
+data_fam %>% 
+  count(family, genus, sort = TRUE)
+```
+
+
+```{r}
+# Fitting a one-way model for diagnostic purposes
+mod_fam <- aov(altura ~ family, data = data_fam)
+```
+
+
+```{r}
+# Checking normality of model residuals
+shapiro.test(residuals(mod_fam))
+```
+
+
+```{r}
+# Graphical assessment of residual normality
+qqnorm(residuals(mod_fam), main = "", xlab = "Theoretical quantiles", ylab = "Sample quantiles")
+qqline(residuals(mod_fam), col = "red", lwd = 2)
+```
+
+
+```{r}
+# Checking homogeneity of variances
+var.test(altura ~ family, data = data_fam)
+```
+
+
+```{r}
+# Comparing mean height between families
+t.test(altura ~ family, data = data_fam, alternative = "two.sided", var.equal = TRUE)
+```
+
+
+```{r}
+# The same two-group comparison can also be expressed as a one-way ANOVA
+summary(mod_fam)
+```
+
+
+This section compares mean height between two botanical families. The example illustrates the use of a two-sample Student’s t-test and the evaluation of model assumptions based on residual normality and variance homogeneity. Because the homogeneity of variances assumption was considered acceptable, the t-test was performed assuming equal variances. A one-way ANOVA with two groups is also shown to illustrate that, in this case, ANOVA and the two-sample t-test address the same general hypothesis of equal group means.
+
+
+## 4.3. Comparing the proportion of multi-stemmed individuals between two families
+
+```{r}
+# Creating a table with the variables of interest
+prop_family <- data_fam %>%
+  group_by(family) %>%
+  summarise(n_total = n(), n_multistemmed = sum(multicaule == 1), prop_multistemmed = n_multistemmed / n_total, .groups = "drop") %>%
+  arrange(desc(n_total))
+
+prop_family
+```
+
+```{r}
+# Comparing the proportion of multi-stemmed individuals between families
+prop.test(x = prop_family$n_multistemmed, n = prop_family$n_total, alternative = "two.sided")
+```
+
+
+This section compares the proportion of multi-stemmed individuals between two botanical families. Because the response variable is binary, the analysis is based on counts of individuals with and without the attribute in each group. The proportion test evaluates whether the observed difference between family-level proportions is greater than expected under the null hypothesis of equal proportions.
+
+
+## 4.4. Bootstrap confidence interval and permutation test
+
+
+This section uses simulation-based inference to compare mean height between multi-stemmed and single stem individuals. First, bootstrap resampling is used to estimate the uncertainty associated with the observed difference in means and to construct a confidence interval. Then, a permutation test is used to evaluate the null hypothesis that height and multistem status are independent.
+
+
+```{r}
+# Observed difference in mean height
+# The order c("No", "Yes") calculates mean height of non-bifurcated
+# individuals minus mean height of bifurcated individuals.
+d_hat <- data_trab %>% 
+  specify(altura ~ multicaule_l) %>% 
+  calculate(stat = "diff in means", order = c("No", "Yes"))
+
+d_hat
+```
+
+```{r}
+# Bootstrap distribution of the difference in means
+set.seed(333)
+boot_bif <- data_trab %>% 
+  specify(altura ~ multicaule_l) %>% 
+  generate(reps = 10000, type = "bootstrap") %>% 
+  calculate(stat = "diff in means", order = c("No", "Yes"))
+
+# Bootstrap confidence interval
+ci_boot_bif <- boot_bif %>% 
+  get_confidence_interval(level = 0.95, type = "percentile")
+
+ci_boot_bif
+```
+
+```{r}
+# Visualizing the bootstrap confidence interval
+boot_bif %>%
+  visualise() +
+  shade_confidence_interval(ci_boot_bif)
+```
+
+
+```{r, warning = F}
+# Permutation test for the null hypothesis of independence between height and bifurcation status
+set.seed(333)
+perm_bif <- data_trab %>% 
+  specify(altura ~ multicaule_l) %>% 
+  hypothesize(null = "independence") %>%
+  generate(reps = 10000, type = "permute") %>%
+  calculate(stat = "diff in means", order = c("No", "Yes"))
+
+# Permutation p-value
+p_perm_bif <- perm_bif %>%
+  get_p_value(obs_stat = d_hat, direction = "two-sided")
+
+
+# p-value
+p_val <- p_perm_bif$p_value
+
+if (p_val == 0) {
+  paste("p <", 1 / 10000)
+} else {
+  paste("p =", round(p_val, 4))
+}
+```
+
+
+```{r}
+# Visualizing the permutation test
+perm_bif %>%
+  visualise() +
+  shade_p_value(obs_stat = d_hat, direction = "two-sided")
+```
+
+
+The bootstrap distribution represents the uncertainty around the observed difference in mean height between the two groups. If the confidence interval does not include zero, this suggests a difference in mean height between multi-stemmed and single stem individuals. The permutation test evaluates the same question under the null hypothesis of independence between height and multistem status. Small p-values indicate that the observed difference would be unlikely if multistem status and height were unrelated.
+
+
+# 5. Sampling
+
+```{r}
+# General settings
+z <- 1.96
+relative_error <- 0.05
+N <- nrow(data_trab)
+```
+
+
+## 5.1. Sample size based on relative error
+
+```{r}
+# Sample size based on relative error
+n_dap <- (z^2 * (sd(data_trab$dap) / mean(data_trab$dap))^2) / relative_error^2
+n_alt <- (z^2 * (sd(data_trab$altura) / mean(data_trab$altura))^2) / relative_error^2
+
+n_dap
+n_alt
+```
+
+
+```{r}
+# Finite population correction
+n_dap_f <- n_dap / (1 + ((n_dap - 1) / N))
+n_alt_f <- n_alt / (1 + ((n_alt - 1) / N))
+
+n_dap_f
+n_alt_f
+```
+
+
+## 5.2. Simple random sampling
+
+```{r}
+# Simple random sampling
+set.seed(333)
+amo_aleatoria <- data_trab %>% 
+  slice_sample(n = round(n_dap, 0), replace = FALSE)
+
+nrow(amo_aleatoria)
+```
+
+```{r}
+# Comparing sample estimates with population parameters
+compare_sample(amo_aleatoria, data_trab, dap)
+```
+
+
+## 5.3. Systematic sampling
+
+```{r}
+# Systematic sampling
+set.seed(333)
+
+k <- N / round(n_dap, 0)
+
+inicio <- runif(1, min = 1, max = k)
+
+indices_sistematicos <- floor(inicio + (0:(round(n_dap, 0) - 1)) * k)
+
+indices_sistematicos <- indices_sistematicos[indices_sistematicos <= N]
+
+amo_sistematica <- data_trab[indices_sistematicos, ]
+
+nrow(amo_sistematica)
+```
+
+```{r}
+# Comparing sample estimates with population parameters
+compare_sample(amo_sistematica, data_trab, dap)
+```
+
+
+## 5.4. Stratified sampling
+
+```{r}
+# Proportional stratified sampling by bed
+set.seed(123)
+
+alocacao <- data_trab %>%
+  filter(sec_cant != "") %>%
+  count(sec_cant, name = "N_h") %>%
+  mutate(prop = N_h / sum(N_h), n_h_raw = prop * round(n_dap, 0), n_h = floor(n_h_raw), remainder = n_h_raw - n_h)
+
+# Adjusting allocation to obtain exactly the target sample size
+faltam <- round(n_dap, 0) - sum(alocacao$n_h)
+
+alocacao <- alocacao %>%
+  arrange(desc(remainder)) %>%
+  mutate(n_h = n_h + if_else(row_number() <= faltam, 1L, 0L)) %>%
+  select(sec_cant, N_h, n_h)
+
+# Drawing the proportional stratified sample
+amo_estratificada <- data_trab %>%
+  filter(sec_cant != "") %>%
+  inner_join(alocacao, by = "sec_cant") %>%
+  group_by(sec_cant) %>%
+  group_modify(~ slice_sample(.x, n = unique(.x$n_h), replace = FALSE)) %>%
+  ungroup() %>%
+  select(-N_h, -n_h)
+
+nrow(amo_estratificada)
+```
+
+```{r}
+# Comparing sample estimates with population parameters
+compare_sample(amo_estratificada, data_trab, dap)
+```
+
+
+## 5.5. Cluster sampling
+
+### 5.5.1. One-stage cluster sampling
+
+```{r}
+# One-stage cluster sampling
+# Entire beds are selected until the accumulated number of individuals reaches the target sample size.
+set.seed(123)
+
+conglomerados <- data_trab %>%
+  filter(sec_cant != "") %>%
+  count(sec_cant, name = "N_cant")
+
+conglomerados_sorteados <- conglomerados %>%
+  slice_sample(prop = 1) %>%
+  mutate(N_acum = cumsum(N_cant)) %>%
+  filter(N_acum <= round(n_dap, 0) | lag(N_acum, default = 0) < round(n_dap, 0))
+
+amo_conglomerados <- data_trab %>%
+  filter(sec_cant %in% conglomerados_sorteados$sec_cant)
+
+nrow(amo_conglomerados)
+```
+
+```{r}
+# Comparing sample estimates with population parameters
+compare_sample(amo_conglomerados, data_trab, dap)
+```
+
+
+### 5.5.2. Two-stage cluster sampling
+
+```{r}
+# Two-stage cluster sampling
+# First, beds are selected. Then, individuals are sampled within the selected beds.
+set.seed(123)
+
+n_canteiros <- 50 
+
+canteiros_sorteados <- data_trab %>%
+  filter(sec_cant != "") %>%
+  distinct(sec_cant) %>%
+  slice_sample(n = n_canteiros)
+
+base_canteiros <- data_trab %>%
+  filter(sec_cant %in% canteiros_sorteados$sec_cant)
+
+amo_conglomerados_2est <- base_canteiros %>%
+  slice_sample(n = round(n_dap, 0), replace = FALSE)
+
+nrow(amo_conglomerados_2est)
+```
+
+```{r}
+# Comparing sample estimates with population parameters
+compare_sample(amo_conglomerados_2est, data_trab, dap)
+```
+
+
+## 5.6. Comparing sampling strategies
+
+
+```{r}
+# Organizing sampling outputs in a named list
+samples_list <- list(
+  "Simple random sampling" = amo_aleatoria,
+  "Systematic sampling" = amo_sistematica,
+  "Stratified sampling" = amo_estratificada,
+  "One-stage cluster sampling" = amo_conglomerados,
+  "Two-stage cluster sampling" = amo_conglomerados_2est
+)
+```
+
+
+```{r}
+# Comparing each sample with the reference population
+sampling_comparison <- imap_dfr(
+  samples_list,
+  ~ compare_sample(.x, data_trab, dap) %>%
+    mutate(method = .y)
+) %>%
+  relocate(method)
+
+sampling_comparison
+```
+
+
+```{r}
+# Plotting relative error of mean DBH
+sampling_comparison %>%
+  filter(statistic == "mean") %>%
+  mutate(method = reorder(method, abs(relative_error_percent))) %>%
+  ggplot(aes(x = relative_error_percent, y = method)) +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  geom_vline(xintercept = c(-5, 5), linetype = "dotted") +
+  geom_segment(aes(x = 0, xend = relative_error_percent, yend = method), linewidth = 0.8) +
+  geom_point(size = 3) +
+  geom_text(aes(label = paste0(round(relative_error_percent, 2), "%"), hjust = if_else(relative_error_percent >= 0, -0.2, 1.2)), size = 3.5) +
+  scale_x_continuous(limits = c(-6, 7), breaks = c(-5, -2.5, 0, 2.5, 5)) +
+  labs(x = "Relative error of mean DBH (%)", y = "Sampling method", title = "Relative error of mean DBH by sampling method", subtitle = "Dotted lines indicate the ±5% relative error threshold") +
+  theme_classic()
+```
+
+
+This section introduces different sampling strategies using the arboretum census as the reference population. First, sample size is estimated based on the desired relative error for DBH and height. Then, different sampling designs are applied, including simple random sampling, systematic sampling, stratified sampling, and cluster sampling. For each design, the sample mean and standard deviation of DBH are compared with the corresponding values calculated from the reference population. The objective is not to define a definitive sampling protocol, but to illustrate how different sampling designs can produce different estimates from the same population.
+
