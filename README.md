@@ -18,11 +18,11 @@ The HTML documents display the R code, statistical outputs, tables, and figures 
 
 The dendrometric data were collected during a census conducted between 2021 and 2022 in the planted area of the JBRJ arboretum. Plants with diameter at breast height (DBH) equal to or greater than 10 cm were included.
 
-After data checking and preprocessing, the working dataset comprised **4,631 individuals**, including:
+After data checking and preprocessing, the working dataset comprised **4,621 individuals**, including:
 
-* 3,011 trees;
-* 1,362 individuals of Arecaceae;
-* 258 plants belonging to other growth-habit categories.
+* 3,007 trees;
+* 1,357 individuals of Arecaceae;
+* 257 plants belonging to other growth-habit categories.
 
 The dataset was used in the graduate course **Applied Statistics for Botany**, offered by the National School of Tropical Botany at JBRJ. The course was conducted as an intensive 40-hour module from 25 to 29 May 2026 and included 10 graduate students with different levels of previous experience in R and applied statistics.
 
@@ -63,7 +63,7 @@ The scripts are numbered according to the pedagogical sequence in which the stat
 | [`2_descriptive_analysis.Rmd`](code/2_descriptive_analysis.Rmd)                 | Frequencies, measures of central tendency and dispersion, quantiles, group summaries, and exploratory data visualization                 |
 | [`3_probability_random_variables.Rmd`](code/3_probability_random_variables.Rmd) | Empirical probabilities and applications of binomial, Poisson, and normal distributions                                                  |
 | [`4_statistical_inference.Rmd`](code/4_statistical_inference.Rmd)               | Confidence intervals, parametric and non-parametric hypothesis tests, group comparisons, and bootstrap procedures                        |
-| [`5_regression_models.Rmd`](code/5_regression_models.Rmd)                       | Linear and quadratic regression, generalized linear models, mixed-effects models, model comparison, and diagnostic procedures            |
+| [`5_regression.Rmd`](code/5_regression.Rmd)                                     | Linear and quadratic regression, generalized linear models, mixed-effects models, model comparison, and diagnostic procedures            |
 | [`6_manuscript_code.Rmd`](code/6_manuscript_code.Rmd)                           | Complete analytical workflow used to produce and refine the results, tables, and figures presented in the manuscript                     |
 
 The first five analytical blocks document the progression of the course. The sixth script integrates the analyses selected for the manuscript and includes additional procedures used during the evaluation and refinement of the results.
