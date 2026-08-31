@@ -1,0 +1,527 @@
+---
+title: "Linear models and extensions"
+author: "Jorge Alonso"
+date: "2026-05-27"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    code_folding: show
+    self_contained: true
+---
+
+# 1. Preparing
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 7,
+  fig.height = 5,
+  dpi = 300)
+```
+
+## 1.1. Loading packages and data
+
+```{r, message = FALSE}
+# Loading packages
+library(tidyverse)
+library(DHARMa)
+library(car)
+library(lmtest)
+library(MASS)
+library(lme4)
+library(lmerTest)
+library(performance)
+library(ggeffects)
+```
+
+```{r, include = FALSE}
+# Cleaning memory
+rm(list=ls(all=TRUE)) 
+gc() 
+```
+
+```{r}
+# Database link
+processed_url <- "https://raw.githubusercontent.com/jmalonso55/Applied-Statistics-for-a-Tropical-Arboretum/refs/heads/main/data/processed_data.csv"
+```
+
+
+```{r}
+# Loading data
+data_trab <- read.csv(processed_url, sep = ",")
+
+# Checking
+summary(data_trab)
+```
+
+
+## 1.2. Subsetting data
+
+```{r}
+# Filtering for trees
+arvore <- data_trab %>% 
+  filter(habito_pad == "Tree")
+```
+
+
+```{r}
+# Filtering for Moraceae
+moraceae <- arvore %>%
+  filter(family == "Moraceae")
+```
+
+
+# 2. Regression analysis
+
+## 2.1. Models for trees
+
+### 2.1.1. Linear model
+
+
+```{r}
+# Linear model
+mod1 <- lm(altura ~ dap, data = arvore)
+```
+
+
+```{r, fig.height=6, fig.width=9}
+# Residuals plots
+par(mfrow = c(2, 2))
+plot(mod1)
+```
+
+
+```{r, fig.height = 5, fig.width = 7}
+# Analysis of residuals
+res_mod1 <- simulateResiduals(mod1, n = 1000)
+plot(res_mod1)
+```
+
+
+An ordinary least-squares model was first fitted with height as a linear function of DBH. The residual diagnostics revealed curvature, increasing variance, and departures from normality, indicating that the model assumptions were not adequately met and that a straight-line relationship did not adequately describe the height–DBH pattern.
+
+
+### 2.1.2. Square-root-log model
+
+```{r}
+# Square-root-log linear model
+mod_log <- lm(sqrt(altura) ~ log(dap), data = arvore)
+```
+
+
+```{r, fig.height=6, fig.width=9}
+# Residuals plots
+par(mfrow = c(2, 2))
+plot(mod_log)
+```
+
+
+```{r, fig.height = 5, fig.width = 7}
+# Analysis of residuals
+res_mod_log <- simulateResiduals(mod_log, n = 1000)
+plot(res_mod_log)
+```
+
+
+```{r}
+# Model summary
+summary(mod_log)
+```
+
+
+This model relates the square root of height linearly to the natural logarithm of DBH. The residual diagnostics improved substantially and indicated no relevant violations of the model assumptions. The DBH coefficient was positive and statistically significant (β = 0.847, p < 0.001), and the model explained 44.0% of the variation in square-root-transformed height.
+
+
+### 2.1.3. Quadratic model
+
+```{r}
+# Quadratic model
+mod2 <- lm(altura ~ dap + I(dap^2), data = arvore)
+```
+
+
+```{r, fig.height=6, fig.width=9}
+# Residuals plots
+par(mfrow = c(2, 2))
+plot(mod2)
+```
+
+
+```{r, fig.height = 5, fig.width = 7}
+# Analysis of residuals
+res_mod2 <- simulateResiduals(mod2, n = 1000)
+plot(res_mod2)
+```
+
+
+Adding a quadratic DBH term allows the height–DBH curve to bend, but the residual diagnostics still indicate heteroscedasticity and departures from normality. Thus, the quadratic form provides greater flexibility but does not meet the model assumptions as adequately as the square-root–log model.
+
+
+### 2.1.4. Model comparison
+
+```{r}
+# AIC
+AIC(mod1, mod_log, mod2)
+```
+
+
+```{r}
+# BIC
+BIC(mod1, mod_log, mod2)
+```
+
+
+```{r}
+# Best model summary
+summary(mod_log)
+```
+
+
+Although the square-root–log model had substantially lower reported AIC and BIC values, these criteria cannot be compared directly across models fitted to different response scales. The square-root–log model was therefore selected because its residual diagnostics indicated the best conformity with the model assumptions among the evaluated models.
+
+
+### 2.1.5. Log model visualization
+
+```{r}
+# DAP values for predicting
+pred <- data.frame(dap = seq(min(arvore$dap, na.rm = TRUE), max(arvore$dap, na.rm = TRUE), length.out = 300))
+
+# Predictions for sqrt(altura)
+pred_pi_sqrt <- predict(mod_log, newdata = pred, interval = "prediction", level = 0.95)
+
+# Transforming values to the original scale
+pred$altura_ajustada <- pred_pi_sqrt[, "fit"]^2
+```
+
+
+```{r}
+# Results visualization
+ggplot(arvore, aes(x = dap, y = altura)) +
+  geom_point(alpha = 0.12, size = 1.4, color = "grey35") +  
+  geom_line(data = pred, aes(x = dap, y = altura_ajustada), inherit.aes = FALSE, color = "#084594", linewidth = 1.2) +
+  labs(x = "DBH (cm)", y = "Height (m)", subtitle = expression(sqrt(height) == 0.58786 + 0.84654 * ln(DBH))) +
+  theme_classic() +
+    theme(panel.grid.major.x = element_line(color = "grey90", linetype = "dashed"),
+        panel.grid.major.y = element_line(color = "grey90", linetype = "dashed"),
+        panel.background = element_rect(fill = "grey97"))
+```
+
+
+Predictions were generated across the observed DBH range and the fitted values were squared to return them to the original height scale. The resulting curve shows an increasing but concave height–DBH relationship, with progressively smaller height gains per additional centimetre of DBH.
+
+
+## 2.2. Models for Moraceae
+
+### 2.2.1. Linear model
+
+
+```{r}
+# Linear model
+mod1m <- lm(altura ~ dap, data = moraceae)
+```
+
+
+```{r, fig.height=6, fig.width=9}
+# Residuals plots
+par(mfrow = c(2, 2))
+plot(mod1m)
+```
+
+
+```{r, fig.height = 5, fig.width = 7}
+# Analysis of residuals
+res_mod1m <- simulateResiduals(mod1m, n = 1000)
+plot(res_mod1m)
+```
+
+
+For Moraceae, the residual diagnostics of the ordinary least-squares model revealed a pronounced curved pattern, indicating that the linear specification did not adequately represent the height–DBH relationship or meet the model assumptions.
+
+
+### 2.2.2. Linear-log model
+
+```{r}
+# Linear-log model
+mod_logm <- lm(altura ~ log(dap), data = moraceae)
+```
+
+
+```{r, fig.height=6, fig.width=9}
+# Residuals plots
+par(mfrow = c(2, 2))
+plot(mod_logm)
+```
+
+
+```{r, fig.height = 5, fig.width = 7}
+# Analysis of residuals
+res_mod_logm <- simulateResiduals(mod_logm, n = 1000)
+plot(res_mod_logm)
+```
+
+
+Replacing DBH with its natural logarithm produced a concave height–DBH relationship. The residual diagnostics improved markedly and indicated adequate conformity with the model assumptions, supporting this functional form for the Moraceae subset.
+
+
+### 2.2.3. Quadratic model
+
+```{r}
+# Quadratic model
+mod2m <- lm(altura ~ dap + I(dap^2), data = moraceae)
+```
+
+
+```{r, fig.height=6, fig.width=9}
+# Residuals plots
+par(mfrow = c(2, 2))
+plot(mod2m)
+```
+
+
+```{r, fig.height = 5, fig.width = 7}
+# Analysis of residuals
+res_mod2m <- simulateResiduals(mod2m, n = 1000)
+plot(res_mod2m)
+```
+
+
+The quadratic specification also captured the curvature of the height–DBH relationship and adequately met the model assumptions. However, this greater flexibility required an additional parameter, and a few observations with relatively high leverage remained at the upper end of the DBH range.
+
+
+### 2.2.4. Model comparison
+
+```{r}
+# AIC
+AIC(mod1m, mod_logm, mod2m)
+```
+
+
+```{r}
+# BIC
+BIC(mod1m, mod_logm, mod2m)
+```
+
+
+```{r}
+# R²
+r2(mod_logm)
+r2(mod2m)
+```
+
+
+```{r}
+# Model summary
+summary(mod_logm)
+```
+
+
+The linear–log and quadratic models received similar support, with an AIC difference of only 1.81 and both explaining approximately 51% of the variation in height. The linear–log model was selected by a narrow margin based on its lower BIC, slightly higher adjusted R², and greater parsimony, although the quadratic model cannot be decisively dismissed. In the selected model, height increased with log(DBH) (β = 5.419, p < 0.001; R² = 0.509). The remaining unexplained variation suggests that additional predictors or more complex model structures may be needed to better represent the height–DBH relationship.
+
+
+## 2.3. Mixed effects for Moraceae
+
+```{r}
+# Filtering for beds with three or more trees
+moraceae_f <- moraceae %>% 
+  add_count(sec_cant, name = "n_sec_cant") %>% 
+  filter(n_sec_cant >= 3) %>% 
+  mutate(sec_cant = factor(sec_cant))
+```
+
+### 2.3.1. Linear-log mixed effects
+
+```{r}
+# Mixed effects linear-log model
+mod_logmm <- lmer(altura ~ log(dap) + (1 | sec_cant), data = moraceae_f, REML = F)
+```
+
+
+```{r}
+# Analysis of residuals
+res_mod_logmm <- simulateResiduals(mod_logmm, n = 1000)
+plot(res_mod_logmm)
+```
+
+
+After retaining only arboretum beds containing at least three Moraceae individuals, a linear–log mixed model was fitted to 76 trees distributed across 14 beds. This filter reduced the inclusion of poorly represented groups, which could hinder stable estimation of bed-level variation. A random intercept was included to allow expected height to vary among beds, and the residual diagnostics indicated adequate conformity with the model assumptions.
+
+
+### 2.3.2. Comparing models
+
+```{r}
+# AIC
+AIC(mod_logm, mod_logmm)
+```
+
+
+```{r}
+# BIC
+BIC(mod_logm, mod_logmm)
+```
+
+
+```{r}
+# R²
+r2(mod_logm)
+r2(mod_logmm)
+```
+
+
+The displayed AIC, BIC, and R² values should not be used as a direct fixed-versus-mixed comparison because the fixed model was fitted to 133 trees, whereas the mixed model used the filtered subset of 76 trees. Moreover, ordinary and mixed-model R² statistics have different definitions. A valid comparison requires refitting the fixed model to moraceae_f; the current output only shows that the mixed model has marginal R² = 0.587 and conditional R² = 0.784 within its own dataset.
+
+
+```{r}
+# Alternative log model with the filtered database
+mod_logm_f <- lm(altura ~ log(dap), data = moraceae_f)
+```
+
+
+```{r}
+# AIC
+AIC(mod_logm_f, mod_logmm)
+```
+
+
+```{r}
+# BIC
+BIC(mod_logm_f, mod_logmm)
+```
+
+
+```{r}
+# R²
+r2(mod_logm_f)
+r2(mod_logmm)
+```
+
+
+To ensure a valid comparison, an alternative linear–log model without random effects was fitted to the same filtered dataset used for the mixed model. The mixed model had substantially lower AIC (378.36 versus 391.56; ΔAIC = 13.20) and BIC (387.69 versus 398.56; ΔBIC = 10.87), providing support for including a random intercept for arboretum bed. The ordinary linear model explained 67.6% of the variation in height (adjusted R² = 0.671). In the mixed model, the fixed effect of log(DBH) accounted for 58.7% of the variance, whereas the combination of fixed and random effects accounted for 78.4%. Although ordinary and mixed-model R² values are defined differently and should not be compared directly, the information criteria and the difference between marginal and conditional R² indicate substantial variation among arboretum beds.
+
+
+### 2.3.3. Results
+
+```{r}
+# Mixed effects linear-log model (adjusting REML)
+mod_logmm <- lmer(altura ~ log(dap) + (1 | sec_cant), data = moraceae_f, REML = T)
+```
+
+```{r}
+# Mixed model summary
+summary(mod_logmm)
+```
+
+```{r}
+# Random effects significance
+ranova(mod_logmm)
+```
+
+```{r}
+# Variance and correlation components
+VarCorr(mod_logmm)
+```
+
+
+```{r}
+# Intraclass Correlation Coefficient
+icc(mod_logmm)
+```
+
+
+After model selection, the mixed model was refitted using restricted maximum likelihood. Height increased significantly with log(DBH) (β = 5.352, p < 0.001). The standard deviations of the bed-level random intercepts and residuals were similar, at 2.385 and 2.384 m, respectively. The likelihood-ratio test supported the inclusion of the random intercept for arboretum bed (p < 0.001). The adjusted intraclass correlation coefficient was 0.500, indicating that, after accounting for the fixed effect of log(DBH), approximately 50% of the remaining variation in height was attributable to differences among arboretum beds.
+
+
+### 2.3.4. Visualization
+
+```{r}
+# Predicting for plotting
+pred_mod_logmm <- ggpredict(mod_logmm, terms = "dap [all]", type = "fixed")
+
+# Visualizing
+ggplot(pred_mod_logmm, aes(x = x, y = predicted)) +
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high), alpha = 0.2) +
+  geom_line(linewidth = 1.2) +
+  geom_point(data = moraceae_f, aes(x = dap, y = altura), inherit.aes = FALSE, alpha = 0.7) +
+  labs(x = "DBH (cm)", y = "Predicted height", title = "") +
+  theme_classic()
+```
+
+
+```{r}
+# Extracting random intercepts for arboretum beds
+rank_canteiros <- ranef(mod_logmm)$sec_cant %>%
+  as.data.frame() %>%
+  rownames_to_column("sec_cant") %>%
+  rename(efeito_canteiro = `(Intercept)`) %>%
+  arrange(desc(efeito_canteiro)) %>%
+  mutate(rank = row_number(), interpretacao = case_when(
+      efeito_canteiro > 0 ~ "Acima da média",
+      efeito_canteiro < 0 ~ "Abaixo da média",
+      TRUE ~ "Na média"))
+```
+
+
+```{r}
+# Visualizing
+ggplot(rank_canteiros, aes(x = reorder(sec_cant, efeito_canteiro), y = efeito_canteiro)) +
+  geom_col() +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  coord_flip() +
+  labs(x = "Arboretum bed", y = "Estimated random intercept") +
+  theme_classic() +
+  theme(panel.background = element_rect(fill = "grey97"),
+        plot.title = element_text(hjust = -0.02, vjust = -4, face = "bold", size = 15),
+        plot.title.position = "plot",
+        plot.margin = margin(1, 5, 1, 15))
+```
+
+
+The first plot presents the population-level height–DBH curve and its confidence interval, whereas the second ranks the estimated bed-specific deviations from the overall intercept. Positive values identify beds in which Moraceae trees were taller than expected for their DBH, and negative values identify beds with lower expected heights.
+
+
+## 2.4. Generalized linear model
+
+```{r}
+# Binomial model
+mod_bin <- glm(multicaule ~ altura, data = data_trab, family = "binomial")
+```
+
+
+```{r}
+# Analysis of residuals
+res_mod_bin <- simulateResiduals(fittedModel = mod_bin, n = 1000)
+plot(res_mod_bin)
+```
+
+```{r}
+# Model summary
+summary(mod_bin)
+```
+
+
+```{r}
+# Prediction of multistem probability
+pred_altura <- ggpredict(mod_bin, terms = "altura [all]", margin = "empirical")
+
+# Visualizing
+ggplot() +
+  geom_jitter(data = data_trab, aes(x = altura, y = multicaule), height = 0.05, width = 0.05, alpha = 0.35) +
+  geom_ribbon(data = pred_altura, aes(x = x, ymin = conf.low, ymax = conf.high), alpha = 0.2) +
+  geom_line(data = pred_altura, aes(x = x, y = predicted), linewidth = 1.2) +
+  scale_y_continuous(limits = c(-0.1, 1.1), breaks = seq(0, 1, 0.2)) +
+  scale_x_continuous(breaks = seq(0, 30, 5)) +
+  labs(x = "Height (m)", y = "Predicted probability of multiple stems") +
+  theme_classic() +
+  theme(panel.grid.major.x = element_line(color = "grey90", linetype = "dashed"),
+        panel.background = element_rect(fill = "grey97"),
+        plot.title = element_text(hjust = -0.01, vjust = -6, face = "bold", size = 15),
+        plot.title.position = "plot",
+        plot.margin = margin(1, 5, 1, 15))
+```
+
+
+A binomial logistic model was fitted to estimate the probability of multiple stems as a function of height. The height coefficient was negative (β = −0.139, p < 0.001), corresponding to an odds ratio of 0.870: each additional metre of height was associated with approximately 13.0% lower odds of having multiple stems. The residual diagnostics indicated adequate conformity with the model assumptions. However, this result should be interpreted as an association and does not establish that greater height causes a reduction in multistem probability.
+
