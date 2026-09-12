@@ -1,4 +1,5 @@
 # Applied Statistics for a Tropical Arboretum
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22730213.svg)](https://doi.org/10.5281/zenodo.22730213)
 
 This repository contains the datasets, R Markdown scripts, rendered analytical
 outputs, and teaching materials associated with the study:
@@ -143,23 +144,7 @@ Baseline for Living Collection Monitoring*. Manuscript under review.
 
 ## Citation
 
-Until a DOI is assigned, cite the repository as:
-
-> Alonso, J. M.; Kurtz, B. C.; Almeida, T. M. H. (2026). *Applied Statistics
-> for a Tropical Arboretum: Dendrometric Data, Teaching Materials, and
-> Analytical Code* (Version 1.0.0) [Dataset]. GitHub.
-> <https://github.com/jmalonso55/Applied-Statistics-for-a-Tropical-Arboretum>
-
-After the GitHub release is archived in Zenodo, replace the provisional citation
-above with:
-
-> Alonso, J. M.; Kurtz, B. C.; Almeida, T. M. H. (2026). *Applied Statistics
-> for a Tropical Arboretum: Dendrometric Data, Teaching Materials, and
-> Analytical Code* (Version 1.0.0) [Dataset]. Zenodo.
-> https://doi.org/TO-BE-ASSIGNED
-
-The version-specific Zenodo DOI should be cited when referring to the archived
-materials used in the manuscript.
+Alonso, J. M.; Kurtz, B. C.; Almeida, T. M. H. (2026). *Applied Statistics for a Tropical Arboretum: Dendrometric Data, Teaching Materials, and Analytical Code* (Version 1.0.0) [Dataset]. Zenodo. https://doi.org/10.5281/zenodo.22730213
 
 ## License
 
