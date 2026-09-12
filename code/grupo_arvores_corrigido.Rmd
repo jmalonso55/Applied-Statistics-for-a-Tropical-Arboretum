@@ -1,0 +1,2371 @@
+---
+title: "script árvores compilado"
+authors: "Lukas Gabriel de Souza, Luiz Fernando Ferreira, Luyza Riscado, Nicole Cruz e Raphael Soares"
+output: html_document
+date: "2026-06-08"
+---
+
+# 1. Preparing
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+ message = FALSE,
+  warning = FALSE,
+  fig.width = 7,
+  fig.height = 5,
+  dpi = 300)
+```
+
+## 1.1. Loading packages and data
+
+```{r}
+# Loading packages
+library(tidyverse)
+library(skimr)
+library(stringr)
+library(stringi)
+library(DescTools)
+library(moments)
+library(treemapify)
+library(dplyr)
+library(patchwork)
+library(DHARMa)
+library(car)
+library(lmtest)
+library(MASS)
+library(lme4)
+library(lmerTest)
+library(performance)
+library(emmeans)
+library(multcomp)
+library(multcompView)
+library(ggeffects)
+library(ggrepel)
+```
+
+
+```{r}
+rm(list=ls(all=TRUE))
+gc()
+```
+
+```{r}
+# Database link -- carrega direto da rede, não precisa carregar a base de dados
+
+raw_url <- "https://raw.githubusercontent.com/jmalonso55/Applied-Statistics-for-a-Tropical-Arboretum/refs/heads/main/data/processed_data.csv"
+```
+
+```{r}
+# Loading data
+data_trab <- read.csv(raw_url, sep = ",")
+
+# Checking
+summary(data_trab)
+```
+
+## 1.2. Processing the data
+
+
+```{r}
+arvore <- data_trab %>% 
+  filter(habito_pad == "Tree",
+         !str_detect(family, "Arecaceae"))
+arvore
+```
+
+
+### 🔴 Sugestão do professor:
+Quando vocês adicionam o argumento _!str_detect(family, "Arecaceae")_ vocês filtram plantas com NA para família, com isso a base retorna um número menor de indivíduos do que deveria. Por um lado, deixou o código mais limpo para algumas tarefas. Por outro, reduziu a população que deveria ter sido considerada. Eu fiz a correção abaixo gerando uma base alternativa. Estarei corrigindo o código para acionar ela quando mais adequado..
+Além disso, lembrem da boa prática de nomear os chunks!
+
+
+```{r}
+# Filtrando base para árvores
+arvore_t <- data_trab %>% 
+  filter(habito_pad == "Tree")
+```
+
+
+```{r}
+sort(unique(arvore$family))
+```
+
+# 2. Perguntas gerais - árvore
+## 2.1. Avalie a população em termos de riqueza a nível de gênero. O arboreto é melhor caracterizado como coleção botânica ou jardim histórico?
+
+```{r}
+# aninhar por gênero
+
+arvore %>% 
+  count(genus) %>% 
+  arrange(desc(n))
+  
+```
+
+```{r}
+# Verificando as famílias e seus respectivos gêneros sem identificação - "NA"
+arvore %>%
+  filter(is.na(genus)) %>%
+  count(family, sort = TRUE)
+```
+
+```{r}
+# Gêneros com 1 e 2 indivíduos - singletons ou doubletons
+generos <- arvore %>% 
+  count(genus)
+
+generos %>% 
+  count(n) %>% 
+  arrange(n)
+```
+
+```{r}
+# famílias com 1 e 2 indivíduos - singletons ou doubletons
+familias <- arvore %>% 
+  count(family, name = "n")
+
+familias %>% 
+  filter(n %in% c(1, 2)) %>% 
+  arrange(n, family)
+```
+
+### 🔴 Sugestão do professor:
+Como vimos em aula, sempre que possível, ilustre seus dados por meio de gráficos. Uma possibilidade aqui seria:
+
+```{r}
+# Gráfico com a frequência dos 10 gêneros mais abundantes de árvores
+arvore %>% 
+  filter(!is.na(genus)) %>% 
+  count(genus) %>% 
+  arrange(desc(n)) %>% 
+  slice_head(n = 10) %>% 
+  ggplot(aes(x = n, y = reorder(genus, n))) +
+  geom_col(fill = "lightblue", color = "grey80", alpha = 0.7) +
+  geom_text(aes(label = n), hjust = -0.2, family = "serif", size = 3) +
+  labs(x = "Number of individuals", y = "Genus") +
+  scale_x_continuous(expand = expansion(mult = c(0, 0.1))) +
+  theme_classic() +
+  theme(text = element_text(family = "serif"),
+        panel.grid.major.x = element_line(linetype = "dashed", color = "gray80"),
+        panel.background = element_rect(fill = "grey97"))
+```
+
+
+## 2.2. Como está estruturada a população do arboreto em termos de altura e DAP? As palmeiras e árvores do arboreto estão concentradas em classes específicas de altura e DAP, ou apresentam distribuição ampla de tamanhos?
+
+```{r}
+# Definir classes de altura
+arvore <- arvore %>%
+    mutate(classe_alt = cut(altura, breaks = 10))
+```
+
+```{r}
+# Calcular as frequências para cada classe de dap
+classe_altura <- arvore %>%
+  count(classe_alt, name = "Freq_obs") %>%
+  mutate(Fre_rel = Freq_obs / sum(Freq_obs),
+    Freq_acum_obs = cumsum(Freq_obs),
+    Freq_acum_rel = cumsum(Fre_rel))
+
+classe_altura<- classe_altura %>%
+  bind_rows(summarise(., classe_alt = "Total",
+                      Freq_obs = sum(Freq_obs),
+                      Fre_rel = sum(Fre_rel),
+                      Freq_acum_obs = sum(Freq_obs),
+                      Freq_acum_rel = 1))
+
+classe_altura
+```
+
+```{r}
+# Tabela com altura média, altura mediana e altura máxima por família 
+arvore %>%
+  group_by(family) %>%
+  summarise(
+    n = n(),
+    altura_media = mean(altura, na.rm = TRUE),
+    altura_mediana = median(altura, na.rm = TRUE),
+    altura_max = max(altura, na.rm = TRUE)
+  ) %>%
+  arrange(desc(altura_media))
+```
+
+```{r}
+#TOP 20 espécies mais altas
+arvore %>%
+  filter(!is.na(altura)) %>%
+  arrange(desc(altura)) %>%
+  dplyr::select(family, genus, species, altura) %>%
+  slice_head(n = 20)
+```
+
+```{r}
+# top 10 espécies com maior altura e DAP
+arvore %>%
+  filter(!is.na(altura)) %>%
+  arrange(desc(altura)) %>%
+  slice_head(n = 10) %>%
+  dplyr::select(family, genus, species, altura, dap)
+```
+
+```{r}
+arvore <- arvore %>%
+  mutate(classe_alt = cut(altura, breaks = 10))
+
+
+classe_altura <- arvore %>%
+  count(classe_alt, name = "Freq_obs") %>%
+  arrange(classe_alt) %>%
+  mutate(
+    Fre_rel = Freq_obs / sum(Freq_obs),
+    Freq_acum_obs = cumsum(Freq_obs),
+    Freq_acum_rel = cumsum(Fre_rel)
+  )
+total <- classe_altura %>%
+  summarise(
+    classe_alt = "Total",
+    Freq_obs = sum(Freq_obs),
+    Fre_rel = sum(Fre_rel),
+    Freq_acum_obs = NA,
+    Freq_acum_rel = NA
+  )
+
+classe_altura_final <- bind_rows(classe_altura, total)
+
+classe_altura_final
+```
+
+```{r}
+classes_altura <- c(2.64, 6.85, 11, 15.2, 19.3, 23.5, 27.7, 31.8, 36, 40.2, 44.4)
+```
+
+```{r}
+# Table visualization
+hist_alt <- ggplot(arvore, aes(x = altura)) +
+  geom_histogram(bins = 10, fill = "#A8D0E6", color = "black", breaks = classes_altura, alpha = 0.5) +
+  labs(x = "Height (m)", y = "Observed frequency") +
+  scale_y_continuous(expand = c(0, 0), breaks = c(seq(0, 700, by = 100))) +
+  scale_x_continuous(breaks = classes_altura) +
+  theme_classic() +
+  theme(
+  panel.grid.major.y = element_line(
+    linetype = "dashed",
+    color = "grey70"
+  )
+)
+hist_alt
+```
+
+```{r}
+classes_dap <- c(9.98, 31.6, 53.1, 74.5, 95.9, 117, 139, 160, 182, 203, 225)
+```
+
+```{r}
+arvore <- arvore %>%
+  mutate(
+    classe_dap = cut(
+      dap,
+      breaks = classes_dap,
+      include.lowest = TRUE
+    )
+  )
+```
+
+```{r}
+# Calcular as frequências para cada classe de dap
+classe_dap <- arvore %>%
+  count(classe_dap, name = "Freq_obs") %>%
+  mutate(Fre_rel = Freq_obs / sum(Freq_obs),
+    Freq_acum_obs = cumsum(Freq_obs),
+    Freq_acum_rel = cumsum(Fre_rel))
+
+classe_dap<- classe_dap %>%
+  bind_rows(summarise(., classe_dap = "Total",
+                      Freq_obs = sum(Freq_obs),
+                      Fre_rel = sum(Fre_rel),
+                      Freq_acum_obs = sum(Freq_obs),
+                      Freq_acum_rel = 1))
+
+classe_dap
+```
+
+```{r}
+# Table visualization
+  hist_dap <- ggplot(arvore, aes(x = dap)) +
+  geom_histogram(bins = 10, fill = "#A8D0E6", color = "black", breaks = classes_dap, alpha = 0.5) +
+  labs(x = "DAP", y = "Observed frequency") +
+  scale_y_continuous(expand = c(0, 0), breaks = c(seq(0, 1300, by = 100))) +
+  scale_x_continuous(breaks = classes_dap) +
+  theme_classic() +
+  theme(
+  panel.grid.major.y = element_line(
+    linetype = "dashed",
+    color = "grey70"
+  )
+)
+hist_dap
+```
+
+```{r}
+# indivíduos com dap >= 100
+arvore %>%
+  filter(dap >= 100) %>%
+  summarise(n = n())
+```
+
+```{r}
+# Famílias com DAP >= 100
+tab_familias_100 <- arvore %>%
+  filter(dap >= 100) %>%
+  count(family, name = "n_individuos") %>%
+  arrange(desc(n_individuos))
+
+tab_familias_100
+```
+
+```{r}
+tab_top6 <- arvore %>%
+  filter(dap >= 100) %>%
+  count(family, name = "n_individuos") %>%
+  arrange(desc(n_individuos)) %>%
+  slice_head(n = 6)
+
+tab_top6
+
+ggplot(tab_top6, aes(x = reorder(family, n_individuos), y = n_individuos)) +
+  geom_col() +
+  coord_flip() +
+  labs(
+    x = "Família",
+    y = "Número de indivíduos (DAP ≥ 100)",
+    title = "Top 6 famílias com maior número de indivíduos grandes"
+  )
+```
+
+
+### 🔴 Sugestão do professor:
+Lembro novamente sobre a organização e identificação do código com cabeçalhos. Muitos trechos paracem ter sio copiados e colados da IA sem preocupação de organizar e identificar.
+Além disso, os gráficos poderiam ter sido combinados em uma única visualização. Mas para isso teríamos que alargar o tamanho da janela de figura do chunk (reparem como o excesso de leinha verticais poluiu a figura):
+
+```{r, fig.height=5, fig.width=10}
+# Junção dos histogramas de altura e DAP
+hist_alt + hist_dap
+```
+
+
+## 2.3. A relação entre altura e DAP é forte entre indivíduos? O DAP é um bom preditor da altura no arboreto?
+
+```{r}
+alt_dap <- with(arvore, cor.test(altura, dap))
+ggplot(arvore, aes(x = dap, y = altura)) +
+  geom_jitter(width = 0.025, alpha = 0.6) +
+  geom_smooth(method = "loess", se = F, color = "red") +
+  labs(x = "DBH (cm)", y = "Height (m)") +
+  theme_classic() 
+
+```
+
+```{r}
+modelo_altura <- lm(altura ~ dap, data = arvore)
+
+plot(modelo_altura)
+```
+
+```{r}
+alt_dap <- cor.test(arvore$altura, arvore$dap, method = "spearman", exact = F)
+alt_dap
+```
+
+```{r}
+alt_dap <- cor.test(arvore$altura, arvore$dap, method = "spearman")
+
+ggplot(arvore, aes(x = dap, y = altura)) +
+  geom_jitter(width = 0.025, alpha = 0.6) +
+  geom_smooth(method = "loess", se = FALSE, color = "red") +
+  annotate(
+    "text",
+    x = Inf,
+    y = Inf,
+    label = paste0(
+      "rho = ", round(alt_dap$estimate, 2),
+      "\np = ", sprintf("%.2e", alt_dap$p.value)
+    ),
+    hjust = 1.1,
+    vjust = 1.5,
+    size = 4
+  ) +
+  labs(x = "DBH (cm)", y = "Height (m)") +
+  theme_classic() 
+```
+
+### 🔴 Sugestão do professor:
+O gráfico incial e final praticamente se repetem. Poderia ter mantido apenas um deles.
+
+
+## 2.4. Há plantas com proporções incomuns de altura em relação ao DAP? Quais indivíduos apresentam valores extremos de relação altura/DAP, e esses indivíduos merecem atenção no monitoramento? 
+
+```{r}
+# Dez famílias mais abundantes
+top_familias <- arvore %>%
+  count(family, sort = TRUE) %>%
+  slice_head(n = 10)
+
+print(top_familias)
+```
+
+```{r}
+arvore <- arvore %>%
+  mutate(rel_alt_dap = altura / dap)
+
+arvore %>%
+  filter(!is.na(rel_alt_dap)) %>%
+  arrange(desc(rel_alt_dap)) %>%
+  dplyr::select(family, genus, species, altura, dap, rel_alt_dap) %>%
+  slice_head(n = 10)
+```
+
+```{r}
+arvore %>%
+  filter(!is.na(rel_alt_dap)) %>%
+  arrange(rel_alt_dap) %>%
+  dplyr::select(family, genus, species, altura, dap, rel_alt_dap) %>%
+  slice_head(n = 10)
+```
+
+```{r}
+Q1 <- quantile(arvore$rel_alt_dap, 0.25, na.rm = TRUE)
+Q3 <- quantile(arvore$rel_alt_dap, 0.75, na.rm = TRUE)
+
+IQR_rel <- Q3 - Q1
+
+lim_inf <- Q1 - 1.5 * IQR_rel
+lim_sup <- Q3 + 1.5 * IQR_rel
+
+outliers <- arvore %>%
+  filter(
+    rel_alt_dap < lim_inf |
+    rel_alt_dap > lim_sup
+  ) %>%
+  dplyr::select(family, genus, species, altura, dap, rel_alt_dap)
+
+outliers
+```
+
+```{r}
+familias_top <- top_familias$family
+
+arvore %>%
+  filter(family %in% familias_top,
+         !is.na(rel_alt_dap)) %>%
+  ggplot(aes(x = reorder(family, rel_alt_dap, median),
+             y = rel_alt_dap)) +
+  geom_boxplot() +
+  coord_flip() +
+  labs(
+    title = "Relação altura/DAP nas 10 famílias mais abundantes",
+    x = "Família",
+    y = "Altura / DAP"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+Q1 <- quantile(arvore$rel_alt_dap, 0.25, na.rm = TRUE)
+Q3 <- quantile(arvore$rel_alt_dap, 0.75, na.rm = TRUE)
+
+IQR_val <- Q3 - Q1
+
+lim_inf <- Q1 - 1.5 * IQR_val
+lim_sup <- Q3 + 1.5 * IQR_val
+```
+
+```{r}
+extremos <- arvore %>%
+  filter(!is.na(rel_alt_dap)) %>%
+  filter(rel_alt_dap < lim_inf | rel_alt_dap > lim_sup) %>%
+  arrange(desc(rel_alt_dap)) %>%
+  dplyr::select(family, genus, species, altura, dap, rel_alt_dap)
+```
+
+```{r}
+extremos %>%
+  slice_head(n = 10)
+```
+
+```{r}
+extremos %>%
+  arrange(rel_alt_dap) %>%
+  slice_head(n = 10)
+```
+
+```{r}
+ggplot(arvore, aes(x = dap, y = altura)) +
+  geom_point(alpha = 0.4) +
+  geom_point(data = extremos,
+             aes(x = dap, y = altura),
+             color = "red", size = 2) +
+  theme_minimal() +
+  labs(
+    title = "Indivíduos com proporção altura/DAP extrema",
+    x = "DAP",
+    y = "Altura"
+  )
+```
+
+```{r}
+#quem são os indivíduos
+extremos %>%
+  mutate(individuo = paste(genus, species)) %>%
+  count(individuo, sort = TRUE)
+```
+
+```{r}
+na_ind <- arvore %>%
+  filter(
+    is.na(species) |
+    species == "NA" |
+    str_detect(species, "NA")
+  )
+```
+
+```{r}
+na_ind %>%
+  dplyr::select(family, genus, species, altura, dap) %>%
+  arrange(family)
+```
+
+```{r}
+na_ind <- arvore %>%
+  filter(
+    is.na(genus) | is.na(species) |
+    str_detect(genus, "NA") |
+    str_detect(species, "NA")
+  )
+
+na_familias <- na_ind %>%
+  count(family, sort = TRUE) %>%
+  slice_head(n = 10)
+
+ggplot(na_familias,
+       aes(x = reorder(family, n), y = n)) +
+  geom_col() +
+  coord_flip() +
+  labs(
+    title = "Famílias com maior número de identificações incompletas",
+    x = "Família",
+    y = "Número de registros com NA taxonômico"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+#das 10 mais
+arvore_top <- arvore %>%
+  filter(family %in% top_familias$family)
+
+ggplot(arvore_top, aes(x = reorder(family, rel_hd, FUN = median), y = rel_hd)) +
+  geom_boxplot(outlier.color = "red", fill = "lightblue") +
+  coord_flip() +   # nomes das famílias legíveis
+  labs(title = "Slenderness in the 10 most abundant families",
+       x = "Family", y = "Heith/DBH ratio") +
+  theme_minimal()
+```
+
+```{r}
+# identificar o outliers
+# Obter os valores considerados outliers pela regra do boxplot
+out_values <- boxplot.stats(arvore$rel_hd)$out
+
+# Filtrar o dataframe para esses indivíduos
+extremos <- arvore %>%
+  filter(rel_hd %in% out_values) %>%
+  arrange(desc(rel_hd))
+
+# Visualizar a tabela
+extremos
+```
+
+```{r}
+# os que estão acima do limite superior do boxplot.
+lim_sup <- boxplot.stats(arvore$rel_hd)$stats[5]  # limite superior do whisker
+extremos_sup <- extremos %>% filter(rel_hd > lim_sup)
+```
+
+```{r}
+extremos_sup
+```
+
+```{r}
+# Extatísticas do boxplot
+bp <- boxplot.stats(arvore$rel_hd)
+
+length(bp$out)
+```
+
+```{r}
+# menores valores de rel_hd
+n_menores <- 10
+
+menores <- arvore %>% 
+  arrange(rel_hd) %>% 
+  slice_head(n = n_menores)
+```
+
+```{r}
+menores
+```
+
+### 🔴 Sugestão do professor:
+Aqui o principal problema foi o excesso e repetição de processos e códigos. Alguns códigos me parecem desnecessários para responder a pergunta. Também, a solicitação foi compilar o Markdown dos dois subgrupos e não copiar e colar tudo que os dois fizeram.
+
+
+## 2.5. As famílias ou gêneros mais abundantes são também as dominantes? Avaliem quais concentram os maiores valores de altura e área basal
+
+```{r}
+#tabela com média e desvio de padrão por família
+#repetição a nível de família
+family_freq <- arvore %>% 
+  group_by(family) %>% 
+  reframe(
+    freq = n(),
+    dom = sum(area_basal)
+  ) %>% 
+  arrange(desc(freq))
+
+family_freq
+```
+
+```{r}
+family_freq <- arvore %>% 
+  group_by(family) %>% 
+  reframe(freq = n())
+```
+
+```{r}
+graf_freq <- family_freq %>% 
+  slice_max(freq, n = 20) %>% 
+  ggplot(aes(x = reorder(family, freq), y = freq)) +
+  geom_col(fill = "gray50") +
+  coord_flip() +
+  scale_y_continuous(
+    breaks = seq(0, max(family_freq$freq), by = 100)
+  ) +
+  labs(
+    x = "Family",
+    y = "Frequency"
+  ) +
+  theme_classic()
+```
+
+```{r}
+family_dom <- arvore %>% 
+  group_by(family) %>% 
+  reframe(
+    dom = sum(area_basal)
+  )
+```
+
+```{r}
+graf_dom <- family_dom %>% 
+  slice_max(dom, n = 20) %>% 
+  ggplot(aes(x = reorder(family, dom), y = dom)) +
+  geom_col(fill = "forestgreen") +
+  coord_flip() +
+  scale_y_continuous(
+    breaks = seq(0, max(family_dom$dom), by = 50)
+  ) +
+  labs(
+    x = "Family",
+    y = "Dominance"
+  ) +
+  theme_classic()
+graf_dom
+```
+
+```{r}
+graf_freq + graf_dom
+```
+
+```{r}
+freq_dom <- family_freq %>% 
+  left_join(family_dom, by = "family")
+```
+
+```{r}
+cor_teste <- cor.test(
+  freq_dom$freq,
+  freq_dom$dom,
+  method = "spearman",
+  exact = FALSE
+)
+
+cor_teste
+```
+
+```{r}
+ggplot(freq_dom, aes(x = log(freq), y = log(dom))) +
+  geom_point(size = 3, alpha = 0.7) +
+  geom_smooth(method = "lm", se = FALSE, color = "red") +
+  annotate(
+    "text",
+    x = Inf,
+    y = Inf,
+    label = paste0(
+      "rho = ", round(cor_teste$estimate, 2),
+      "\np = ", sprintf("%.2e", cor_teste$p.value)
+    ),
+    hjust = 1.1,
+    vjust = 1.5,
+    size = 4
+  ) +
+  labs(
+    x = "log(Frequency)",
+    y = "log(Dominance)"
+  ) +
+  theme_classic()
+```
+
+### 🔴 Sugestão do professor
+Uma sugestão para aprimorar a visualização seria identificar as famílias no gráfico. Vejam:
+
+```{r}
+# Gráfico de dispersão entre a abundância dos gêneros e sua área basal total.
+ggplot(freq_dom, aes(x = log(freq), y = log(dom))) +
+  geom_point(size = 3, alpha = 0.7) +
+  geom_text_repel(aes(label = family), size = 2, max.overlaps = Inf) +
+  geom_smooth(method = "lm", se = TRUE) +
+  labs(x = "log(Abundance)", y = "log(Total basal area m²)") +
+  theme_classic()
+```
+
+
+Acho que, para discutir essa questão no artigo, podemos utilizar outro tipo de gráfico: o _bump chart_. Sei que não abordamos esse tipo de visualização em aula, ele não me ocorreu naquele momento, apenas depois. Mas vejam abaixo como o gráfico fica mais informativo:
+
+```{r}
+# Summary table for trees
+tab_res_arv <- arvore %>%
+  filter(!is.na(family)) %>%
+  group_by(family) %>%
+  summarise(n = n(), altura_media = mean(altura), altura_max = max(altura), area_basal_total = sum(area_basal), area_basal_media = mean(area_basal)) %>%
+  arrange(desc(area_basal_total))
+
+tab_res_arv
+```
+
+
+```{r}
+# Ranking abundance and total basal area
+rank_arv <- tab_res_arv %>%
+  filter(n >= 10) %>%
+  mutate(rank_abundancia = rank(-n, ties.method = "first"), rank_area_basal = rank(-area_basal_total, ties.method = "first"))
+
+rank_arv
+```
+
+
+```{r}
+# Converting table to long format
+rank_arv_long <- rank_arv %>%
+  dplyr::select(family, rank_abundancia, rank_area_basal) %>%
+  pivot_longer(cols = c(rank_abundancia, rank_area_basal), names_to = "variavel", values_to = "ranking") %>%
+  mutate(variavel = dplyr::recode(variavel, rank_abundancia = "Abundance", rank_area_basal = "Total basal area"),
+    variavel = factor(variavel, levels = c("Abundance", "Total basal area")))
+
+rank_arv_long
+```
+
+
+```{r}
+# Setting color palette
+familias <- sort(unique(rank_arv_long$family))
+
+cores_familias <- colorRampPalette(RColorBrewer::brewer.pal(8, "Dark2"))(length(familias))
+
+names(cores_familias) <- familias
+```
+
+
+```{r}
+# Visualizing
+bump_arv <- 
+ggplot(rank_arv_long, aes(x = variavel, y = ranking, group = family, color = family)) +
+  geom_line(alpha = 0.6) +
+  geom_point(size = 2) +
+  geom_text(data = rank_arv_long %>% filter(variavel == "Abundance"), aes(label = family), hjust = 1.15, size = 3) +
+  geom_text(data = rank_arv_long %>% filter(variavel == "Total basal area"), aes(label = family), hjust = -0.15, size = 3) +
+  scale_y_reverse(breaks = seq(1, max(rank_arv_long$ranking), by = 1)) +
+  scale_color_manual(values = cores_familias) +
+  coord_cartesian(clip = "off") +
+  labs(x = NULL, y = "Ranking", title = "(A)") +
+  theme_classic() +
+  theme(text = element_text(family = "serif"),
+        legend.position = "none",
+        plot.title = element_text(hjust = -0.04, vjust = -6, face = "bold", size = 15),
+        plot.title.position = "plot",
+        plot.margin = margin(1, 10, 5, 25))
+
+bump_arv
+```
+
+
+## 2.6. Avaliem a altura dominante em canteiros com mais de 10 plantas
+
+```{r}
+alturas_dominantes <- arvore %>% 
+  group_by(sec_cant) %>% 
+  mutate(n_plantas = n()) %>% 
+  filter(n_plantas > 10) %>% 
+  group_by(sec_cant) %>% 
+  slice_max(altura, n = 1, with_ties = FALSE) %>% 
+  ungroup() %>% 
+  arrange(desc(altura))
+alturas_dominantes
+```
+
+```{r}
+# Criar classes de altura 
+alturas_dominantes <- alturas_dominantes %>%
+  mutate(classe_alt = cut(altura,
+                          breaks = c(0, 10, 15, 20, 25, 30, 35, 50),  # intervalos em metros
+                          labels = c("≤10", "10–15", "15–20", "20–25", "25-30", "30-35", ">35"),
+                          include.lowest = TRUE))
+
+# Contar canteiros por classe
+dist_classe <- alturas_dominantes %>%
+  count(classe_alt)
+
+# Gráfico de barras da frequência
+ggplot(dist_classe, aes(x = classe_alt, y = n, fill = classe_alt)) +
+  geom_col(color = "black") +
+  labs(title = "Distribuição das alturas dominantes por classe",
+       x = "Classe de altura dominante (m)", y = "Número de canteiros") +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+```{r}
+#por famílias mais frequentes
+# Contagem das famílias dominantes
+top_fam_dom <- alturas_dominantes %>%
+  count(family, sort = TRUE) %>%
+  mutate(family_agrup = ifelse(row_number() <= 6, family, "Outras"))  # top 6 + outras
+
+# Juntar de volta ao dataframe
+alturas_dominantes <- alturas_dominantes %>%
+  left_join(top_fam_dom %>% dplyr::select(family, family_agrup), by = "family")
+
+# Gráfico: quantos canteiros têm dominância de cada família (agrupada)
+ggplot(alturas_dominantes, aes(x = fct_infreq(family_agrup), fill = family_agrup)) +
+  geom_bar() +
+  labs(title = "Famílias dominantes nos canteiros (>10 plantas)",
+       x = "Família", y = "Número de canteiros") +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+```{r}
+class(top_fam_dom)
+head(top_fam_dom)
+```
+
+```{r}
+ggplot(alturas_dominantes, aes(x = classe_alt, fill = family_agrup)) +
+  geom_bar() +
+  labs(title = "Classes de altura dominante × família agrupada",
+       x = "Classe de altura (m)", y = "Número de canteiros", fill = "Família") +
+  theme_minimal()
+```
+
+
+### 🔴 Sugestão do professor
+Não compreendi como a análise e os gráficos feitos responderam a pergunta. Uma sugestão simples seria:
+
+```{r}
+# Altura dominante em canteiros com mais de 10 árvores com DAP >= 10cm
+altura_dominante <- arvore %>%
+  filter(!is.na(sec_cant), !is.na(altura)) %>%
+  group_by(sec_cant) %>%
+  mutate(n_ind = n()) %>%
+  filter(n_ind > 10) %>%
+  slice_max(order_by = altura, n = 5, with_ties = FALSE) %>%
+  summarise(n_ind = first(n_ind), altura_dominante = mean(altura), .groups = "drop") %>%
+  arrange(desc(altura_dominante))
+
+altura_dominante
+```
+
+
+```{r, fig.height= 15}
+# Visualização dos resultados
+ggplot(altura_dominante,  aes(x = altura_dominante, y = reorder(sec_cant, altura_dominante))) +
+  geom_col(fill = "#4F772D", color = "black", linewidth = 0.25) +
+  labs(x = "Altura dominante (m)", y = "Canteiro") +
+  theme_classic() +
+  theme(text = element_text(family = "serif"))
+```
+
+
+# 3. Perguntas específicas
+## 3.1. Façam um treemap com família e gênero
+
+```{r}
+# Abundância de indivíduos por gênero dentro das 10 principais famílias
+abundancia_generos <- arvore %>%
+  filter(
+    family %in% family,
+    !is.na(genus),
+    genus != ""
+  ) %>%
+  count(family, genus, name = "abundancia") %>%
+  arrange(family, desc(abundancia))
+
+abundancia_generos
+```
+
+```{r}
+ggplot(abundancia_generos, aes(area = abundancia, fill = family, subgroup = family, label = genus)
+) +
+  geom_treemap(color = "white") +
+  geom_treemap_subgroup_border(color = "black", linewidth = 0.7) +
+  geom_treemap_subgroup_text(place = "centre", grow = TRUE, alpha = 0.6, color = "black", fontface = "bold") +
+  geom_treemap_text(color = "black", place = "centre", reflow = TRUE, size = 8) +
+  labs(fill = "Family") +
+  theme(legend.position = "none",
+    plot.title = element_text(size = 14, face = "bold"))
+```
+
+### 🔴 Sugestão do professor:
+Você poderiam ter filtrado um número menor de famílias para facilitar a visualização.
+
+```{r}
+# Abundância dos gêneros nas 20 famílias mais abundantes
+abundancia_generos_top20 <- abundancia_generos %>%
+  group_by(family) %>%
+  mutate(abundancia_familia = sum(abundancia)) %>%
+  ungroup() %>%
+  arrange(desc(abundancia_familia), family, desc(abundancia)) %>%
+  filter(dense_rank(desc(abundancia_familia)) <= 20) %>%
+  dplyr::select(-abundancia_familia)
+
+abundancia_generos_top20
+```
+
+
+
+```{r}
+# Visualizando os resultados
+ggplot(abundancia_generos_top20, aes(area = abundancia, fill = family, subgroup = family, label = genus)
+) +
+  geom_treemap(color = "white") +
+  geom_treemap_subgroup_border(color = "black", linewidth = 0.7) +
+  geom_treemap_subgroup_text(place = "centre", grow = TRUE, alpha = 0.6, color = "black", fontface = "bold") +
+  geom_treemap_text(color = "black", place = "centre", reflow = TRUE, size = 8) +
+  labs(fill = "Family") +
+  theme(legend.position = "none",
+    plot.title = element_text(size = 14, face = "bold"))
+```
+
+
+## 3.2. Identifiquem possíveis árvores anciãs. Seria possível separar elas de alguma forma?
+
+```{r}
+arvore_menor_rel_hd <- arvore %>% 
+  filter(altura < 10) %>% 
+  arrange(desc(rel_hd))
+
+
+arvore_menor_rel_hd
+```
+
+```{r}
+ggplot(arvore, aes(x = "", y = dap)) +
+  geom_boxplot(fill = "lightgreen", outlier.color = "red") +
+  labs(title = "Boxplot do DAP", y = "DAP (cm)") +
+  theme_minimal()
+```
+
+```{r}
+sapply(c(0.90, 0.95, 0.98), function(p) {
+  sum(arvore$dap >= quantile(arvore$dap, p, na.rm = TRUE))
+})
+```
+
+```{r}
+# Calcular o limite superior da cerca
+bp <- boxplot.stats(arvore$dap)
+corte_boxplot <- bp$stats[5]  
+
+corte_boxplot
+
+# Quantas árvores seriam selecionadas?
+arvore %>% filter(dap > corte_boxplot) %>% nrow()
+```
+
+```{r}
+### Resposta: Não foi possível separar as árvores anciâs pois não existe uma padronização do DAP e da altura.
+```
+
+## 3.3. Avaliem se os padrões de bifurcação mudam de acordo com as famílias mais abundates
+
+```{r}
+# Tabela de contingência para as 16 famílias mais frequentes
+
+filtro_familia <- arvore %>%
+  count(family, sort = TRUE) %>%
+  head(16) %>%
+  pull(family)
+
+# Filtrando apenas essas famílias
+familia_filtro <- arvore %>% 
+  filter(family %in% filtro_familia)
+
+# Tabela de contingência: family vs bifurcated
+familia_16 <- table(familia_filtro$family, familia_filtro$multicaule_l)
+
+# Adiciona margens (totais)
+addmargins(familia_16)
+```
+
+```{r}
+# Realizando o teste
+teste_fam <- chisq.test(familia_16)
+
+# Visualizando os valores esperados
+round(addmargins(teste_fam$expected), 0)
+```
+
+```{r}
+# Resultado do teste
+teste_fam
+```
+
+```{r}
+# Coeficiente de contingência
+ContCoef(familia_16)
+```
+
+```{r}
+# Visualizing the table
+mosaicplot(familia_16, main = "", color = c("darkred", "darkblue"), las = 1, cex.axis = 0.6, ylab = "Family", xlab = "Stem condition", dir = c("h", "v"), off = c(15, 3))
+```
+
+
+```{r}
+# Binomial model for multicaule in Fabaceae
+# Filtering the database
+fabaceae  <- arvore %>%
+  filter(family == "Fabaceae", !is.na(genus), genus != "", !is.na(sec_cant), sec_cant != "") %>%
+  add_count(genus, name = "n_genus") %>%
+  filter(n_genus >= 3) %>%
+  dplyr::select(-n_genus) %>%
+  add_count(sec_cant, name = "n_sec_cant") %>%
+  filter(n_sec_cant >= 3) %>%
+  dplyr::select(-n_sec_cant) %>%
+  add_count(genus, name = "n_genus_final") %>%
+  filter(n_genus_final >= 5) %>%
+  dplyr::select(-n_genus_final)
+```
+
+
+```{r}
+# Binomial model
+mod_binom <- glm(multicaule ~ altura + genus, data = fabaceae, family = "binomial")
+```
+
+```{r}
+# Analysis of residuals
+res_mod_binom <- simulateResiduals(mod_binom, n = 1000)
+plot(res_mod_binom)
+```
+
+
+```{r}
+# Model ANOVA
+anova(mod_binom)
+```
+
+```{r}
+# Model summary
+summary(mod_binom)
+```
+
+```{r}
+# Predição média da probabilidade de multicaule em função da altura
+pred_altura <- ggpredict(mod_binom, terms = "altura [all]")
+
+# Visualizing
+ggplot() +
+  geom_jitter(data = fabaceae, aes(x = altura, y = multicaule), height = 0.05, width = 0.05, alpha = 0.35) +
+  geom_ribbon(data = pred_altura, aes(x = x, ymin = conf.low, ymax = conf.high), alpha = 0.2) +
+  geom_line(data = pred_altura, aes(x = x, y = predicted), linewidth = 1.2) +
+  scale_y_continuous(limits = c(-0.1, 1.1), breaks = seq(0, 1, 0.2)) +
+  labs(x = "Altura", y = "Probabilidade predita de multicaule") +
+  theme_classic()
+```
+
+
+```{r}
+# Predicting considering genus
+pred_genus <- ggpredict(mod_binom, terms = "genus")
+
+# Visualizing
+ggplot(pred_genus, aes(x = reorder(x, predicted), y = predicted)) +
+  geom_pointrange(aes(ymin = conf.low, ymax = conf.high)) +
+  coord_flip() +
+  scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.2)) +
+  labs(x = "Gênero", y = "Probabilidade predita de multicaule") +
+  theme_classic()
+```
+
+### 🔴 Sugestão do professor:
+Essa questão não foi abordada em aula, mas no nosso caso o modelo binomial fica instável porque, em alguns gêneros, nenhum indivíduo apresentou bifurcação. Além de terem um número relativamente baixo de indivíduos observados. Sendo assim, vale a pena fazer um filtro apenas para gêneros principais gerando um melhor modelo para o artigo.
+
+
+```{r}
+# Filtering the database
+fabaceae <- arvore %>%
+  filter(family == "Fabaceae", !is.na(genus), genus != "") %>%
+  add_count(genus, name = "n_genus") %>%
+  arrange(desc(n_genus), genus) %>%
+  mutate(rank_genus = match(genus, unique(genus))) %>%
+  filter(rank_genus <= 10) %>%
+  mutate(genus = as.factor(genus)) %>%
+  dplyr::select(-n_genus, -rank_genus) %>%
+  droplevels()
+```
+
+
+```{r}
+# Binomial model
+mod_binom <- glm(multicaule ~ altura + genus, data = fabaceae, family = "binomial")
+```
+
+
+```{r}
+# Analysis of residuals
+res_mod_binom <- simulateResiduals(mod_binom, n = 1000)
+plot(res_mod_binom)
+```
+
+```{r}
+# Model analysis of deviance
+anova(mod_binom, test = "Chisq")
+```
+
+
+```{r}
+# Model summary
+summary(mod_binom)
+```
+
+```{r}
+# Predição média da probabilidade de multicaule em função da altura
+pred_altura <- ggpredict(mod_binom, terms = "altura [all]", margin = "empirical")
+
+# Visualizing
+binom_alt <- 
+ggplot() +
+  geom_jitter(data = fabaceae, aes(x = altura, y = multicaule), height = 0.05, width = 0.05, alpha = 0.35) +
+  geom_ribbon(data = pred_altura, aes(x = x, ymin = conf.low, ymax = conf.high), alpha = 0.2) +
+  geom_line(data = pred_altura, aes(x = x, y = predicted), linewidth = 1.2) +
+  scale_y_continuous(limits = c(-0.1, 1.1), breaks = seq(0, 1, 0.2)) +
+  scale_x_continuous(breaks = seq(0, 30, 5)) +
+  labs(x = "Height (m)", y = "Predicted probability of multiple stems", title = "(A)") +
+  theme_classic() +
+  theme(panel.grid.major.x = element_line(color = "grey90", linetype = "dashed"),
+        panel.background = element_rect(fill = "grey97"),
+        plot.title = element_text(hjust = -0.01, vjust = -6, face = "bold", size = 15),
+        plot.title.position = "plot",
+        plot.margin = margin(1, 5, 1, 15))
+
+binom_alt
+```
+
+
+```{r}
+# Predicting considering genus
+pred_genus <- ggpredict(mod_binom, terms = "genus")
+
+# Visualizing
+binom_spe <- 
+ggplot(pred_genus, aes(x = reorder(x, predicted), y = predicted)) +
+  geom_pointrange(aes(ymin = conf.low, ymax = conf.high)) +
+  coord_flip() +
+  scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.2)) +
+  labs(x = "Genus", y = "Predicted probability of multiple stems", title = "(B)") +
+  theme_classic() +
+  theme(panel.grid.major.x = element_line(color = "grey90", linetype = "dashed"),
+        panel.background = element_rect(fill = "grey97"),
+        plot.title = element_text(hjust = -0.01, vjust = -6, face = "bold", size = 15),
+        plot.title.position = "plot",
+        plot.margin = margin(1, 5, 1, 15))
+
+binom_spe
+```
+
+
+```{r, fig.width=12}
+# Joining plots
+binom_alt + binom_spe
+```
+
+
+## 3.4. Seria possível modelar para descrever a relação entre altura e DAP para árvores ou pelo menos algumas das famílias?
+
+```{r}
+# modelar para descrever a relação entre altura e DAP
+ggplot(arvore, aes(x = dap, y = altura)) +
+  geom_point(alpha = 0.4, color = "grey30") +
+  geom_smooth(method = "loess", se = F, color = "red") +
+  labs(title = "Relação altura × DAP (todas as árvores)",
+       x = "DAP (cm)", y = "Altura (m)") +
+  theme_minimal()
+```
+```{r}
+# Removing NA and tranforming variables
+arvore_mod <- arvore %>%
+  filter(!is.na(altura),
+    !is.na(dap),
+    !is.na(n_caule),
+    !is.na(multicaule),
+    !is.na(sec_cant),
+    !is.na(family)) %>%
+  mutate(sec_cant = as.factor(sec_cant),
+    family = as.factor(family),
+    multicaule = as.factor(multicaule),
+    genus = as.factor(genus))
+```
+
+```{r}
+# Filtering the database for family represented by 10 or more plants
+arvore_mod2 <- arvore_mod %>%
+  filter(!is.na(family)) %>%
+  add_count(family, name = "n_family") %>%
+  filter(n_family >= 10) %>%
+  dplyr::select(-n_family)
+```
+
+### 3.4.1. Height x DHB visualization
+
+```{r}
+# Counting 16 top families
+contagem <- arvore_mod2 %>% 
+  filter(!is.na(family)) %>% 
+  count(family) %>% 
+  arrange(desc(n)) %>% 
+  slice_head(n = 16) %>% 
+  pull(family)
+
+# Filtering
+arv_16 <- arvore_mod2 %>% 
+  filter(family %in% contagem) 
+```
+
+
+```{r}
+# Visualizing
+ggplot(arv_16, aes(x = dap, y = altura, color = multicaule_l)) +
+  geom_point(alpha = 0.4) +
+  facet_wrap(~family) +
+  theme_classic()
+```
+
+
+### 3.4.2. Modeling for specific genus/families
+
+### 🔴 Sugestão do professor:
+Há, nesta seção, alguns erros menores que não comentarei individualmente. De modo geral, porém, foi realizada uma exploração extensa, demonstrando que a inclusão de grupos taxonômicos (ora famílias, ora gêneros) pode explicar melhor a relação entre altura e DAP. Alguns dos problemas identificados foram herdados do meu próprio script. Comentarei os mais importantes, mas me considero parcialmente responsável por eles, pois surgiram durante a adaptação do código.
+
+Outra questão, o diagnóstico dos modelos foi realizado apenas com resíduos simulados do pacote DHARMa. Embora essa abordagem possa ser utilizada, para modelos lineares também é recomendável examinar os gráficos convencionais de resíduos, que permitem avaliar diretamente linearidade, homogeneidade da variância, normalidade e observações influentes. Esses diagnósticos devem complementar a comparação por AIC, BIC e R².
+
+#### 3.4.2.1. Meliaceae
+
+```{r}
+# Filtering for genus and beds with more than 3 plants
+meliaceae <- arvore_mod %>%
+  filter(family == "Meliaceae") %>% 
+  filter(!is.na(genus)) %>%
+  add_count(genus, name = "n_genus") %>%
+  filter(n_genus >= 3) %>%
+  add_count(sec_cant, name = "n_sec_cant") %>%
+  filter(n_sec_cant >= 3) %>%
+  dplyr::select(-n_genus, -n_sec_cant)
+```
+
+
+##### 3.4.2.1.1. Linear model
+
+```{r}
+# Linear model
+mod1 <- lm(altura ~ dap + genus, data = meliaceae)
+```
+
+```{r}
+# Analysis of residuals
+res_mod1 <- simulateResiduals(mod1, n = 1000)
+plot(res_mod1)
+```
+
+```{r}
+# Linear model ANOVA
+anova(mod1)
+```
+
+```{r}
+# Linear model summary
+summary(mod1)
+```
+
+
+##### 3.4.2.1.2. Log model
+
+```{r}
+# Log model
+mod_log <- lm(altura ~ log(dap) + genus, data = meliaceae)
+```
+
+```{r}
+# Analysis of residuals
+res_mod_log <- simulateResiduals(mod_log, n = 1000)
+plot(res_mod_log)
+```
+
+##### 3.4.2.1.3. Quadratic model
+
+```{r}
+# Quadratic model
+mod2 <- lm(altura ~ dap + I(dap^2) + genus, data = meliaceae)
+```
+
+
+```{r}
+# Analysis of residuals
+res_mod2 <- simulateResiduals(mod2, n = 1000)
+plot(res_mod2)
+```
+
+```{r}
+# Quadratic model ANOVA
+anova(mod2)
+```
+
+##### 3.4.2.1.4. Comparing models
+
+```{r}
+# ANOVA for comparing linear, quadratic and log regression models
+anova(mod1, mod2, mod_log)
+```
+
+```{r}
+# AIC and BIC for model comparison
+AIC(mod1, mod2, mod_log)
+BIC(mod1, mod2, mod_log)
+```
+
+```{r}
+# Linear model R²
+r2(mod1)
+```
+
+```{r}
+# log model R²
+r2(mod_log)
+```
+
+### 🔴 Sugestão do professor:
+A comparação conjunta por anova() não é válida porque o modelo logarítmico não é aninhado nos modelos linear e quadrático. Esse mesmo erro é reproduzido outras vezes na comparação entre outros modelos.
+A ANOVA pode ser utilizada apenas para comparar os modelos linear e quadrático. Para comparar os três, devem ser utilizados AIC, BIC e o diagnóstico dos resíduos. Nesse caso, AIC e BIC indicam melhor ajuste do modelo logarítmico. O ideal seria separar os modelos aninhados para comparação por anova():
+
+```{r}
+# Comparando modelo linear e quadrático
+anova(mod1, mod2)
+```
+
+
+##### 3.4.2.1.5. Visualizing results
+
+```{r}
+library(multcomp)
+library(multcompView)
+```
+
+
+```{r}
+# Means comparison between species - não funcionou. Error in UseMethod("cld") :  método não aplicável para 'cld' aplicado a um objeto de classe "emmGrid" - resolvido ao transformar 'genus' em factor, antes estava como character. necessário fazer essa mudança para trabalhar com Famílias e não necessário para trabalhar com gêneros já que genus não é uma variável utilizada. 
+emm_sp <- emmeans(mod_log, ~ genus)
+
+multcomp::cld(emm_sp, adjust = "sidak", Letters = letters, decreasing = T)
+```
+
+```{r}
+ggplot(data = meliaceae, aes(x = dap, y = altura)) +
+  geom_smooth(method = "lm", formula = y ~ log(x)) +
+  geom_point(aes(color = genus)) +
+  theme_classic()
+```
+
+
+###  🔴 Sugestão do professor:
+O gráfico não representa completamente o modelo selecionado. Embora o modelo inclua o efeito de gênero, geom_smooth() apresenta apenas uma curva geral, ignorando esse efeito. As predições devem ser apresentadas separadamente por gênero ou o gráfico deve ser identificado apenas como uma visualização exploratória da relação entre altura e DAP.
+
+#### 3.4.2.2. Carapa - Meliaceae genus
+
+```{r}
+carapa <- arvore %>%
+  filter(genus == "Carapa")
+```
+
+##### 3.4.2.2.1. Linear model
+
+```{r}
+# Linear model
+mod1c <- lm(altura ~ dap, data = carapa)
+```
+
+```{r}
+# Analysis of residuals
+res_mod1c <- simulateResiduals(mod1c, n = 1000)
+plot(res_mod1c)
+```
+
+##### 3.4.2.2.2. Log model
+
+```{r}
+# Log model
+mod_logc <- lm(altura ~ log(dap), data = carapa)
+```
+
+```{r}
+# Analysis of residuals
+res_mod_logc <- simulateResiduals(mod_logc, n = 1000)
+plot(res_mod_logc)
+```
+
+```{r}
+# log model ANOVA
+anova(mod_logc)
+```
+
+```{r}
+# log model summary
+summary(mod_logc)
+```
+
+##### 3.4.2.2.3. Quadratic model
+
+```{r}
+# Quadratic model
+mod2c <- lm(altura ~ dap + I(dap^2), data = carapa)
+```
+
+
+```{r}
+# Analysis of residuals
+res_mod2c <- simulateResiduals(mod2c, n = 1000)
+plot(res_mod2c)
+```
+
+
+### 🔴 Sugestão do professor:
+Foram ajustados modelos linear, logarítmico e quadrático, mas não foi apresentada a comparação entre eles antes da escolha do modelo logarítmico para inclusão do efeito aleatório de canteiro. Primeiro, comparem as três formas por AIC, BIC e diagnóstico dos resíduos. Depois, incluam o efeito de canteiro no modelo com a forma funcional selecionada.
+
+```{r}
+# Comparação por AIC
+AIC(mod1c, mod_logc, mod2c)
+```
+
+
+```{r}
+# Comparação por BIC
+BIC(mod1c, mod_logc, mod2c)
+```
+
+
+##### 3.4.2.2.4. Mixed effects log model
+
+```{r}
+# log model with beds random effects
+mod1m <- lmer(altura ~ log(dap) + (1 | sec_cant), data = carapa, REML = T)
+```
+
+
+```{r}
+# Analysis of residuals
+res_mod1m <- simulateResiduals(mod1m, n = 1000)
+plot(res_mod1m)
+```
+
+
+```{r}
+# Comparing models without and with random effects
+AIC(mod_logc, mod1m)
+BIC(mod_logc, mod1m)
+```
+
+
+### 🔴 Sugestão do professor: 
+Há um problema nessa comparação também. mod1m foi ajustado com REML = TRUE, e seu AIC foi comparado diretamente ao do lm. Para essa comparação, eu orientaria ajustar temporariamente o modelo misto por máxima verossimilhança:
+
+
+```{r}
+# Ajuste do modelo por máxima verossimilhança
+mod1m_ml <- lmer(altura ~ log(dap) + (1 | sec_cant), data = carapa, REML = FALSE)
+
+# AIC
+AIC(mod_logc, mod1m_ml)
+```
+
+
+```{r}
+# BIC
+BIC(mod_logc, mod1m_ml)
+```
+
+
+
+```{r}
+# log model R²
+r2(mod_logc)
+```
+
+```{r}
+# mixed model R²
+r2(mod1m)
+```
+
+
+```{r}
+# Mixed model summary
+summary(mod1m)
+```
+
+
+```{r}
+# Mixed model summary
+anova(mod1m)
+```
+
+```{r}
+# Random effects significance
+ranova(mod1m)
+```
+
+### 🔴 Sugestão do professor:
+Embora os valores de R² marginal e condicional tenham sido superiores no modelo misto, o efeito de canteiro apresentou evidência apenas marginal (p = 0,065), e AIC e BIC não indicaram de forma consistente a superioridade desse modelo. Portanto, os efeitos estimados para os canteiros devem ser interpretados com cautela. Outra possibilidade seria testar a inclusão do efeito aleatório de canteiro em modelos com outras formas para a relação entre altura e DAP, especialmente a quadrática, e comparar seus ajustes.
+
+
+##### 3.4.2.2.5. Results visualization
+
+```{r}
+# Predicting for plotting
+pred_mod1m <- ggpredict(mod1m, terms = "dap [all]", type = "fixed")
+
+# Visualizing
+ggplot(pred_mod1m, aes(x = x, y = predicted)) +
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high), alpha = 0.2) +
+  geom_line(linewidth = 1.2) +
+  geom_point(data = carapa, aes(x = dap, y = altura, color = sec_cant), inherit.aes = FALSE, alpha = 0.7) +
+  labs(x = "DAP", y = "Altura predita", title = "") +
+  theme_classic()
+```
+
+
+```{r}
+# Extraindo efeitos aleatórios dos canteiros
+rank_canteiros <- ranef(mod1m)$sec_cant %>%
+  as.data.frame() %>%
+  rownames_to_column("sec_cant") %>%
+  rename(efeito_canteiro = `(Intercept)`) %>%
+  arrange(desc(efeito_canteiro)) %>%
+  mutate(rank = row_number(), interpretacao = case_when(
+      efeito_canteiro > 0 ~ "Acima da média",
+      efeito_canteiro < 0 ~ "Abaixo da média",
+      TRUE ~ "Na média"))
+```
+
+
+```{r}
+# Visualizando
+ggplot(rank_canteiros, aes(x = reorder(sec_cant, efeito_canteiro), y = efeito_canteiro)) +
+  geom_col() +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  coord_flip() +
+  labs(x = "Canteiro", y = "Efeito aleatório estimado", title = "Ranking dos canteiros pelo efeito aleatório") +
+  theme_classic()
+```
+
+
+### 🔴 Sugestão do professor:
+Gostei dos resultados dos modelos para andiroba. É uma espécie de interesse econômico pela madeira e óleo das sementes. Acredito ser um bom caminho refinarmos esse modelo para o artigo ilustrando os conceitos que vimos sobre modelos mistos.
+
+
+#### 3.4.2.3. Bignoniaceae
+
+```{r}
+# Filtering database
+bignoniaceae <- arvore %>%
+  filter(family == "Bignoniaceae", !is.na(genus), genus != "", !is.na(sec_cant), sec_cant != "") %>%
+  add_count(genus, name = "n_genus") %>%
+  filter(n_genus >= 3) %>%
+  dplyr::select(-n_genus) %>%
+  add_count(sec_cant, name = "n_sec_cant") %>%
+  filter(n_sec_cant >= 4) %>%
+  dplyr::select(-n_sec_cant) %>%
+  add_count(genus, name = "n_genus_final") %>%
+  filter(n_genus_final >= 3) %>%
+  dplyr::select(-n_genus_final)
+```
+
+
+##### 3.4.2.3.1. Linear model
+
+```{r}
+# Linear model
+mod1b <- lm(altura ~ dap + genus, data = bignoniaceae)
+```
+
+```{r}
+# Analysis of residuals
+res_mod1b <- simulateResiduals(mod1b, n = 1000)
+plot(res_mod1b)
+```
+
+```{r}
+# Model ANOVA
+anova(mod1b)
+```
+
+```{r}
+# Linear model without genus
+mod1b_alt <- lm(altura ~ dap, data = bignoniaceae)
+```
+
+
+```{r}
+# Analysis of residuals
+res_mod1b_alt <- simulateResiduals(mod1b_alt, n = 1000)
+plot(res_mod1b_alt)
+```
+
+
+```{r}
+# Simple linear model summary
+summary(mod1b_alt)
+```
+
+##### 3.4.2.3.2. Log model
+
+```{r}
+# Log model
+mod_logb <- lm(altura ~ log(dap) + genus, data = bignoniaceae)
+```
+
+
+```{r}
+# Analysis of residuals
+res_mod_logb <- simulateResiduals(mod_logb, n = 1000)
+plot(res_mod_logb)
+```
+
+```{r}
+# log model ANOVA
+anova(mod_logb)
+```
+
+```{r}
+# Simple log model
+mod_logb_alt <- lm(altura ~ log(dap), data = bignoniaceae)
+```
+
+```{r}
+# Analysis of residuals
+res_mod_logb_alt <- simulateResiduals(mod_logb_alt, n = 1000)
+plot(res_mod_logb_alt)
+```
+
+
+```{r}
+# Simple log summary
+summary(mod_logb_alt)
+```
+
+
+##### 3.4.2.3.3. Quadratic model
+
+```{r}
+# Quadratic model
+mod2b <- lm(altura ~ dap + I(dap^2) + genus, data = bignoniaceae)
+```
+
+
+```{r}
+# Analysis of residuals
+res_mod2b <- simulateResiduals(mod2b, n = 1000)
+plot(res_mod2b)
+```
+
+```{r}
+# Quadratic model ANOVA
+anova(mod2b)
+```
+
+
+```{r}
+# Simple quadratic model
+mod2b_alt <- lm(altura ~ dap + I(dap^2), data = bignoniaceae)
+```
+
+```{r}
+# Analysis of residuals
+res_mod2b_alt <- simulateResiduals(mod2b_alt, n = 1000)
+plot(res_mod2b_alt)
+```
+
+##### 3.4.2.3.4. Model comparison
+
+```{r}
+# ANOVA for comparing log and quadratic regression models
+anova(mod_logb_alt, mod2b_alt)
+```
+
+```{r}
+# Model comparison
+AIC(mod_logb_alt, mod2b_alt)
+BIC(mod_logb_alt, mod2b_alt)
+```
+
+```{r}
+# log model R²
+r2(mod_logb_alt)
+```
+
+```{r}
+# Quadratic model R²
+r2(mod2b_alt)
+```
+
+##### 3.4.2.3.5. Mixed effects log model
+
+```{r}
+# Model with beds as random effects
+mod1mb <- lmer(altura ~ log(dap) + (1 | sec_cant), data = bignoniaceae)
+```
+
+```{r}
+# Analysis of residuals
+res_mod1mb <- simulateResiduals(mod1mb, n = 1000)
+plot(res_mod1mb)
+```
+
+```{r}
+# Model ANOVA
+anova(mod1mb)
+```
+
+```{r}
+# Model R²
+r2(mod1mb)
+```
+
+```{r}
+# Random effects significance
+ranova(mod1mb)
+```
+
+```{r}
+# Model comparison
+AIC(mod_logb_alt, mod1mb)
+BIC(mod_logb_alt, mod1mb)
+```
+
+##### 3.4.2.3.6. Results visualization
+
+```{r}
+# Predicting for plotting
+pred_mod1mb <- ggpredict(mod1mb, terms = "dap [all]", type = "fixed")
+
+# Visualizing
+ggplot(pred_mod1mb, aes(x = x, y = predicted)) +
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high), alpha = 0.2) +
+  geom_line(linewidth = 1.2) +
+  geom_point(data = bignoniaceae, aes(x = dap, y = altura, color = sec_cant), inherit.aes = FALSE, alpha = 0.7) +
+  labs(x = "DAP", y = "Altura predita", title = "") +
+  theme_classic()
+```
+
+
+```{r}
+# Extraindo efeitos aleatórios dos canteiros
+rank_canteiros_b <- ranef(mod1mb)$sec_cant %>%
+  as.data.frame() %>%
+  rownames_to_column("sec_cant") %>%
+  rename(efeito_canteiro = `(Intercept)`) %>%
+  arrange(desc(efeito_canteiro)) %>%
+  mutate(rank = row_number(), interpretacao = case_when(efeito_canteiro > 0 ~ "Acima da média",
+      efeito_canteiro < 0 ~ "Abaixo da média",
+      TRUE ~ "Na média"))
+```
+
+
+```{r}
+# Visualizando
+ggplot(rank_canteiros_b, aes(x = reorder(sec_cant, efeito_canteiro), y = efeito_canteiro)) +
+  geom_col() +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  coord_flip() +
+  labs(x = "Canteiro", y = "Efeito aleatório estimado", title = "Ranking dos canteiros pelo efeito aleatório") +
+  theme_classic()
+```
+
+### 🔴 Sugestão do professor:
+Como comentado antes, a comparação por anova() deve ser restrita aos modelos aninhados, como o linear e o quadrático. A comparação entre as formas linear, logarítmica e quadrática deve ser feita por AIC, BIC, R² ajustado e diagnóstico dos resíduos. Para comparar o modelo simples ao modelo misto por AIC e BIC, o modelo misto deve ser ajustado inicialmente por máxima verossimilhança (REML = FALSE).
+Por praticidade, não farei novamente essa correção, mas deixo claro que esse erro de comparação dos modelos também se repete nas seções posteriores. 
+
+```{r}
+# Comparação entre os modelos simples
+# A ANOVA é válida apenas entre os modelos linear e quadrático
+anova(mod1b_alt, mod2b_alt)
+```
+
+
+```{r}
+# Comparação geral entre modelos lineares, logarítmicos e quadráticos
+AIC(mod1b_alt, mod_logb_alt, mod2b_alt)
+```
+
+
+```{r}
+# BIC
+BIC(mod1b_alt, mod_logb_alt, mod2b_alt)
+```
+
+
+```{r}
+# R² ajustado dos modelos
+r2(mod1b_alt)
+r2(mod_logb_alt)
+r2(mod2b_alt)
+```
+
+```{r}
+# Modelo misto ajustado por máxima verossimilhança para comparação
+mod1mb_ml <- lmer(altura ~ log(dap) + (1 | sec_cant), data = bignoniaceae, REML = FALSE)
+
+# Comparação entre os modelos sem e com efeito de canteiro
+AIC(mod_logb_alt, mod1mb_ml)
+```
+
+
+```{r}
+# BIC
+BIC(mod_logb_alt, mod1mb_ml)
+```
+
+
+```{r}
+# Avaliação do efeito aleatório
+ranova(mod1mb_ml)
+```
+
+
+```{r}
+# R² marginal e condicional
+r2(mod1mb_ml)
+```
+
+#### 3.4.2.4. Explorando outros gêneros
+```{r}
+arv_16 %>%
+  group_by(family, genus) %>%
+  summarise(n = n()) %>%
+  ggplot(aes(x = n)) +
+  geom_histogram(binwidth = 2, fill = "steelblue") +
+  facet_wrap(~ family, scales = "free") +
+  labs(x = "Número de indivíduos", y = "Frequência de gêneros") +
+  theme_bw()
+
+```
+
+```{r}
+arv_16 %>%
+  group_by(family, genus) %>%
+  summarise(n = n()) %>%
+  pull(n) %>%
+  quantile(probs = c(0.25, 0.5, 0.75, 0.9))
+```
+
+### 🔴 Sugestão do professor:
+Esse gráfico não fez o menor sentido de ter sido colocado aqui nesse ponto do código.
+
+
+#### 3.4.2.5. Malvaceae
+
+```{r}
+# Filtering for genus and beds with more than 3 plants
+malvaceae <- arvore %>%
+  filter(family == "Malvaceae") %>% 
+  filter(!is.na(genus)) %>%
+  add_count(genus, name = "n_genus") %>%
+  filter(n_genus >= 3) %>%
+  add_count(sec_cant, name = "n_sec_cant") %>%
+  filter(n_sec_cant >= 3) %>%
+  dplyr::select(-n_genus, -n_sec_cant)
+```
+
+##### 3.4.2.5.1 -  Linear model
+
+```{r}
+# Linear model
+mod1ma <- lm(altura ~ dap + genus, data = malvaceae)
+```
+
+```{r}
+# Analysis of residuals
+res_mod1ma <- simulateResiduals(mod1ma, n = 1000)
+plot(res_mod1ma)
+```
+
+```{r}
+# Linear model ANOVA
+anova(mod1ma)
+```
+
+```{r}
+# Linear model summary
+summary(mod1ma)
+```
+
+```{r}
+# Log model
+mod_logma <- lm(altura ~ log(dap) + genus, data = malvaceae)
+```
+
+```{r}
+# Analysis of residuals
+res_mod_logma <- simulateResiduals(mod_logma, n = 1000)
+plot(res_mod_logma)
+```
+##### 3.4.2.5.2. Quadract model
+```{r}
+# Quadratic model
+mod2ma <- lm(altura ~ dap + I(dap^2) + genus, data = malvaceae)
+```
+
+```{r}
+# Analysis of residuals
+res_mod2ma <- simulateResiduals(mod2ma, n = 1000)
+plot(res_mod2ma)
+```
+
+```{r}
+# Quadratic model ANOVA
+anova(mod2ma)
+```
+
+#####3.4.2.5.3. Comparing models 
+
+```{r}
+# ANOVA for comparing linear, quadratic and log regression models
+anova(mod1ma, mod2ma, mod_logma)
+```
+
+```{r}
+# AIC and BIC for model comparison
+AIC(mod1ma, mod2ma, mod_logma)
+BIC(mod1ma, mod2ma, mod_logma)
+```
+
+```{r}
+# Linear model R²
+r2(mod1ma)
+```
+
+```{r}
+# log model R²
+r2(mod_logma)
+```
+
+##### 3.4.2.5.4. Visualizing results
+
+```{r}
+ggplot(data = malvaceae, aes(x = dap, y = altura)) +
+  geom_smooth(method = "lm", formula = y ~ log(x)) +
+  geom_point(aes(color = genus)) +
+  theme_classic()
+```
+
+
+### 🔴 Sugestão do professor:
+Além dos aspectos de comparação do modelo registrados na seção acima, os resultados da comparação favorecem o modelo linear, enquanto o gráfico final apresenta uma relação logarítmica. O gráfico deve representar o modelo selecionado. Como o modelo inclui gênero, também devem ser apresentadas as predições específicas para cada gênero, e não uma única curva geral.
+
+```{r}
+# Criando a base para predição
+newdata_ma <- expand.grid(dap = seq(min(malvaceae$dap, na.rm = TRUE), max(malvaceae$dap, na.rm = TRUE), length.out = 100), genus = mod1ma$xlevels$genus)
+
+# Alturas preditas pelo modelo
+newdata_ma$pred <- predict(mod1ma, newdata = newdata_ma)
+
+# Visualizando
+ggplot(malvaceae, aes(x = dap, y = altura)) +
+  geom_point(aes(color = genus), alpha = 0.6) +
+  geom_line(data = newdata_ma, aes(y = pred, color = genus), linewidth = 0.8) +
+  labs(x = "DAP (cm)", y = "Altura (m)", color = "Gênero") +
+  theme_classic()
+```
+
+
+#### 3.4.2.6. Fabaceae
+
+```{r}
+# Filtering for genus and beds with more than 3 plants
+fabaceae <- arvore %>%
+  filter(family == "Fabaceae") %>% 
+  filter(!is.na(genus)) %>%
+  add_count(genus, name = "n_genus") %>%
+  filter(n_genus >= 3) %>%
+  add_count(sec_cant, name = "n_sec_cant") %>%
+  filter(n_sec_cant >= 3) %>%
+  dplyr::select(-n_genus, -n_sec_cant)
+```
+
+##### 3.4.2.6.1 -  Linear model
+
+```{r}
+# Linear model
+mod1ma <- lm(altura ~ dap + genus, data = fabaceae)
+```
+
+```{r}
+# Analysis of residuals
+res_mod1ma <- simulateResiduals(mod1ma, n = 1000)
+plot(res_mod1ma)
+```
+
+```{r}
+# Linear model ANOVA
+anova(mod1ma)
+```
+
+```{r}
+# Linear model summary
+summary(mod1ma)
+```
+
+```{r}
+# Log model
+mod_logma <- lm(altura ~ log(dap) + genus, data = fabaceae)
+```
+
+```{r}
+# Analysis of residuals
+res_mod_logma <- simulateResiduals(mod_logma, n = 1000)
+plot(res_mod_logma)
+```
+
+##### 3.4.2.6.2. Quadract model
+```{r}
+# Quadratic model
+mod2ma <- lm(altura ~ dap + I(dap^2) + genus, data = fabaceae)
+```
+
+```{r}
+# Analysis of residuals
+res_mod2ma <- simulateResiduals(mod2ma, n = 1000)
+plot(res_mod2ma)
+```
+
+```{r}
+# Quadratic model ANOVA
+anova(mod2ma)
+```
+
+### 🔴 Sugestão do professor:
+Os objetos utilizados para os modelos de Fabaceae têm os mesmos nomes dos modelos de Malvaceae e dessa forma foram sobrescritos. Utilizem nomes específicos, como _mod_linear_fab_, _mod_log_fab_ e _mod_quad_fab_.
+
+#####3.4.2.6.3. Comparing models 
+
+```{r}
+# ANOVA for comparing linear, quadratic and log regression models
+anova(mod1ma, mod2ma, mod_logma)
+```
+
+```{r}
+# AIC and BIC for model comparison
+AIC(mod1ma, mod2ma, mod_logma)
+BIC(mod1ma, mod2ma, mod_logma)
+```
+
+```{r}
+# Linear model R²
+r2(mod1ma)
+```
+
+```{r}
+# log model R²
+r2(mod_logma)
+```
+
+
+### 🔴 Sugestão do professor:
+A inclusão de 62 gêneros torna o modelo bastante complexo, especialmente porque alguns são representados por poucos indivíduos. O efeito geral de gênero pode ser avaliado, mas os coeficientes de gêneros específicos devem ser interpretados com cautela. Uma alternativa seria restringir a análise aos gêneros mais abundantes.
+
+
+##### 3.4.2.6.4. Visualizing results
+
+```{r}
+ggplot(data = fabaceae, aes(x = dap, y = altura)) +
+  geom_smooth(method = "lm", formula = y ~ log(x)) +
+  geom_point(aes(color = genus)) +
+  theme_classic()
+```
+
+#### 3.4.2.6. Myrtaceae
+
+
+```{r}
+# Filtering for genus and beds with more than 3 plants
+myrtaceae <- arvore %>%
+  filter(family == "Myrtaceae") %>% 
+  filter(!is.na(genus)) %>%
+  add_count(genus, name = "n_genus") %>%
+  filter(n_genus >= 3) %>%
+  add_count(sec_cant, name = "n_sec_cant") %>%
+  filter(n_sec_cant >= 3) %>%
+  dplyr::select(-n_genus, -n_sec_cant)
+```
+
+##### 3.4.2.6.1 -  Linear model
+
+```{r}
+# Linear model
+mod1ma_my <- lm(altura ~ dap + genus, data = myrtaceae)
+summary(mod1ma_my)
+```
+
+```{r}
+# Analysis of residuals
+res_mod1ma_my <- simulateResiduals(mod1ma_my, n = 1000)
+plot(res_mod1ma_my)
+```
+
+```{r}
+# Linear model ANOVA
+anova(mod1ma_my)
+```
+
+```{r}
+# Linear model summary
+summary(mod1ma_my)
+```
+
+```{r}
+# Log model
+mod_logmy <- lm(altura ~ log(dap) + genus, data = myrtaceae)
+summary(mod_logmy)
+```
+
+```{r}
+# Analysis of residuals
+res_mod_logmy <- simulateResiduals(mod_logmy, n = 1000)
+plot(res_mod_logmy)
+```
+
+##### 3.4.2.6.2. Quadract model
+```{r}
+# Quadratic model
+mod2my <- lm(altura ~ dap + I(dap^2) + genus, data = myrtaceae)
+```
+
+```{r}
+# Analysis of residuals
+res_mod2my <- simulateResiduals(mod2my, n = 1000)
+plot(res_mod2my)
+```
+
+```{r}
+# Quadratic model ANOVA
+anova(mod2my)
+```
+
+#####3.4.2.6.3. Comparing models 
+
+
+```{r}
+# AIC and BIC for model comparison
+AIC(mod1ma_my, mod_logmy, mod2my)
+BIC(mod1ma_my, mod_logmy, mod2my)
+```
+
+```{r}
+# Linear model R²
+r2(mod1ma_my)
+```
+
+```{r}
+# log model R²
+r2(mod_logmy)
+```
+
+##### 3.4.2.6.4. Visualizing results
+
+```{r}
+ggplot(data = myrtaceae, aes(x = dap, y = altura)) +
+  geom_smooth(method = "lm", formula = y ~ log(x)) +
+  geom_point(aes(color = genus)) +
+  theme_classic()
+```
+```{r}
+newdata <- expand.grid(
+  dap = seq(min(myrtaceae$dap), max(myrtaceae$dap), length.out = 100),
+  genus = unique(myrtaceae$genus)
+)
+
+newdata$pred <- predict(mod_logmy, newdata = newdata)
+
+ggplot(myrtaceae, aes(dap, altura)) +
+  geom_point(aes(color = genus), alpha = 0.6) +
+  geom_line(data = newdata, aes(y = pred, color = genus)) +
+  theme_classic()
+```
+#### 3.4.2.7. Lecytidaceae
+
+
+```{r}
+# Filtering for genus and beds with more than 3 plants
+lecythidaceae <- arvore %>%
+  filter(family == "Lecythidaceae") %>% 
+  filter(!is.na(genus)) %>%
+  add_count(genus, name = "n_genus") %>%
+  filter(n_genus >= 3) %>%
+  add_count(sec_cant, name = "n_sec_cant") %>%
+  filter(n_sec_cant >= 3) %>%
+  dplyr::select(-n_genus, -n_sec_cant)
+```
+
+##### 3.4.2.7.1 -  Linear model
+
+```{r}
+# Linear model
+mod1ma_le <- lm(altura ~ dap + genus, data = lecythidaceae)
+summary(mod1ma_le)
+```
+##### 3.4.2.7.2. Log model
+
+```{r}
+# Log model
+mod1ma_le <- lm(altura ~ log(dap) + genus, data = lecythidaceae)
+```
+
+
+```{r}
+# Analysis of residuals
+res_mod_logle <- simulateResiduals(mod1ma_le, n = 1000)
+plot(res_mod_logle)
+```
+
+```{r}
+summary(mod1ma_le)
+```
+
+
+```{r}
+# log model ANOVA
+anova(mod1ma_le)
+```
+
+```{r}
+# Simple log model
+mod_logle_alt <- lm(altura ~ log(dap), data = lecythidaceae)
+```
+
+```{r}
+# Analysis of residuals
+res_mod_logle_alt <- simulateResiduals(mod_logle_alt, n = 1000)
+plot(res_mod_logle_alt)
+```
+
+
+### 🔴 Sugestão do professor:
+O objeto do modelo linear foi sobrescrito pelo modelo logarítmico (que foi gerado duas vezes). Estou ajustando novamente o modelo linear para fins de comparação.
+
+```{r}
+# Linear model
+mod1ma_le <- lm(altura ~ dap + genus, data = lecythidaceae)
+summary(mod1ma_le)
+```
+
+
+```{r}
+# Simple log summary
+summary(mod_logle_alt)
+```
+
+
+##### 3.4.2.7.3. Quadratic model
+
+```{r}
+# Quadratic model
+mod2le <- lm(altura ~ dap + I(dap^2) + genus, data = lecythidaceae)
+```
+
+
+```{r}
+# Analysis of residuals
+res_mod2le <- simulateResiduals(mod2le, n = 1000)
+plot(res_mod2le)
+```
+
+```{r}
+# Quadratic model ANOVA
+anova(mod2le)
+```
+
+
+```{r}
+# Simple quadratic model
+mod2le_alt <- lm(altura ~ dap + I(dap^2), data = lecythidaceae)
+```
+
+```{r}
+# Analysis of residuals
+res_mod2le_alt <- simulateResiduals(mod2le_alt, n = 1000)
+plot(res_mod2le_alt)
+```
+
+##### 3.4.2.7.4. Model comparison
+
+```{r}
+# ANOVA for comparing log and quadratic regression models
+anova(mod_logle_alt, mod2le_alt)
+```
+
+```{r}
+# Model comparison
+AIC(mod_logle_alt, mod2le_alt)
+BIC(mod_logle_alt, mod2le_alt)
+```
+
+```{r}
+# log model R²
+r2(mod_logle_alt)
+```
+
+```{r}
+# Quadratic model R²
+r2(mod2le_alt)
+```
+##### 3.4.2.7.5. Visualizing results
+
+```{r}
+ggplot(data = lecythidaceae, aes(x = dap, y = altura)) +
+  geom_smooth(method = "lm", formula = y ~ log(x)) +
+  geom_point(aes(color = genus)) +
+  theme_classic()
+```
+
+
+### 🔴 Sugestão do professor:
+O gráfico final não representa o modelo selecionado. Como o efeito de gênero foi retirado e o modelo quadrático apresentou melhor ajuste, deve ser apresentada uma única curva quadrática.
+
+
+
