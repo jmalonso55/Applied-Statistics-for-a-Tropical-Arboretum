@@ -50,14 +50,14 @@ than a formal evaluation of learning outcomes.
 
 The processed dataset contains 3,007 trees, 1,357 palms and other Arecaceae,
 and 257 individuals in other growth-form categories. Processing included the
-removal of dead individuals, the exclusion of records without height
+removal of dead individuals, the exclusion of records without DBH
 measurements, the consolidation of multiple stems using equivalent diameter at
-breast height, and the exclusion of two records considered likely measurement
+breast height, and the exclusion of records considered likely measurement
 or data-entry errors.
 
 The variables include taxonomic identification, geographic position,
 dendrometric measurements, wood density, and derived quantities. Wood density
-is expressed in g/cmÂ³. The slenderness variable (`rel_hd`) is calculated as
+is expressed in g/cm³. The slenderness variable (`rel_hd`) is calculated as
 height in metres divided by diameter at breast height in centimetres; therefore,
 a 10 m tall tree with a diameter of 10 cm has a value of 1.
 
@@ -77,7 +77,7 @@ records; users should account for this limitation before spatial reuse.
 | [`5_regression.Rmd`](code/5_regression.Rmd) | Regression analyses |
 | [`6_manuscript_code.Rmd`](code/6_manuscript_code.Rmd) | Analyses and figures used in the manuscript |
 
-Scripts 1â€“5 correspond to the instructional sequence. Script 6 documents the
+Scripts 1-5 correspond to the instructional sequence. Script 6 documents the
 author-checked, rerun, and refined analytical workflow used for the manuscript;
 it should not be interpreted as an unmodified student submission.
 
@@ -93,14 +93,12 @@ teaching experience:
 
 The R Markdown files include instructor feedback in Portuguese. These materials
 are shared with the agreement of the participating students, who are coauthors
-of the associated manuscript and reviewed its contents. They remain accessible
-by direct link but are intentionally excluded from the navigation of the
-teaching website, which is intended for reuse in future courses.
+of the associated manuscript and reviewed its contents.
 
 ## Software requirements
 
 - R version 4.1.0 or later
-- RStudio and Pandoc are recommended for rendering the R Markdown files
+- RStudio is recommended for rendering the R Markdown files
 - Internet access is required because the scripts read data from the public
   GitHub repository and some steps query external services
 
@@ -117,27 +115,6 @@ package versions may produce small numerical or graphical differences. Results
 from external services, including taxonomic information retrieved from GBIF,
 may also change over time.
 
-## Reproducing the analyses
-
-Clone or download the complete repository:
-
-```bash
-git clone https://github.com/jmalonso55/Applied-Statistics-for-a-Tropical-Arboretum.git
-cd Applied-Statistics-for-a-Tropical-Arboretum
-```
-
-Install the dependencies and render a selected analysis. For example:
-
-```r
-source("code/install_dependencies.R")
-rmarkdown::render("code/6_manuscript_code.Rmd")
-```
-
-The scripts intentionally retain the public GitHub URLs used to import the
-datasets. A downloaded script can therefore run from another computer when an
-internet connection is available. The existing HTML files can be opened
-directly without rerunning the analyses.
-
 ## Interpretation and limitations
 
 - The data represent a single census conducted in 2021â€“2022. They provide a
@@ -150,12 +127,12 @@ directly without rerunning the analyses.
 
 ## Dataset creators and contributions
 
-- **Jorge Makhlouta Alonso** â€” repository responsibility, data curation, data
+- **Jorge Makhlouta Alonso**: repository responsibility, data curation, data
   processing, documentation, and analytical workflow.
-- **Bruno Coutinho Kurtz** â€” conceptualization, supervision, and institutional
-  and botanical context.
-- **ThaÃ­s Marques Hidalgo Almeida** â€” principal responsibility for field data
-  collection.
+- **Bruno Coutinho Kurtz**: data collection, preliminary studies and analyses,
+- and validation of the analyses.
+- **ThaÃ­s Marques Hidalgo Almeida**: principal responsibility for field data
+  collection, preliminary studies and analyses.
 
 Authorship of the associated manuscript is distinct from responsibility for the
 dataset and repository.
