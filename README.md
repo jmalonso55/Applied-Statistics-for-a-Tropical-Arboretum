@@ -86,10 +86,8 @@ it should not be interpreted as an unmodified student submission.
 Two anonymized student assignments are preserved as part of the record of the
 teaching experience:
 
-- [Tree-group assignment (HTML)](analysis/grupo_arvores_corrigido.html)
-- [Palm-group assignment (HTML)](analysis/grupo_palmeira_corrigido.html)
-- [Tree-group source and instructor feedback (Rmd)](code/grupo_arvores_corrigido.Rmd)
-- [Palm-group source and instructor feedback (Rmd)](code/grupo_palmeira_corrigido.Rmd)
+- [Tree-group source and feedback (HTML)](https://jmalonso55.github.io/Applied-Statistics-for-a-Tropical-Arboretum/analysis/grupo_arvores_corrigido.html)
+- [Palm-group source and feedback (HTML)](https://jmalonso55.github.io/Applied-Statistics-for-a-Tropical-Arboretum/analysis/grupo_palmeira_corrigido.html)
 
 The R Markdown files include instructor feedback in Portuguese. These materials
 are shared with the agreement of the participating students, who are coauthors
