@@ -1,0 +1,49 @@
+Creative Commons Attribution-NonCommercial 4.0 International
+(CC BY-NC 4.0)
+
+The datasets, data dictionary, source code, documentation, rendered analytical
+outputs, teaching materials, and anonymized student assignments in this
+repository are licensed under the Creative Commons Attribution-NonCommercial
+4.0 International License.
+
+License deed:
+https://creativecommons.org/licenses/by-nc/4.0/
+
+Legal code:
+https://creativecommons.org/licenses/by-nc/4.0/legalcode
+
+Under this license, users may share and adapt the licensed material for
+non-commercial purposes, provided that appropriate credit is given, a link to
+the license is supplied, and any changes are indicated. Attribution must not
+suggest endorsement by the creators.
+
+Commercial use is not authorized by this license and requires prior permission
+from the relevant copyright holders.
+
+Dataset attribution
+-------------------
+
+The datasets and data dictionary should be attributed to:
+
+Jorge Makhlouta Alonso, Bruno Coutinho Kurtz, and
+Thaís Marques Hidalgo Almeida (2026).
+Applied Statistics for a Tropical Arboretum.
+https://github.com/jmalonso55/Applied-Statistics-for-a-Tropical-Arboretum
+
+After a DOI has been assigned to the archived release, users should cite the
+DOI-based record specified in CITATION.cff and in the repository README.
+
+Teaching materials and student assignments
+------------------------------------------
+
+The teaching materials and anonymized student assignments are shared with the
+agreement of their authors. When reusing these materials, users should cite the
+associated manuscript and the archived repository release as specified in the
+repository README.
+
+Third-party material
+--------------------
+
+This license does not apply to third-party content that may be cited, linked,
+or reproduced under separate terms. Such content remains subject to the rights
+and conditions established by its respective owners or sources.
