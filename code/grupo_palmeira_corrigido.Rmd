@@ -1,0 +1,1364 @@
+---
+title: "Grupo 1: Palmeiras do JBRJ"
+author: "Grupo palmeiras"
+date: "2026-06-10"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    code_folding: show
+    self_contained: true
+  word_document:
+    toc: true
+    toc_depth: '3'
+---
+
+## Preparing
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 7,
+  fig.height = 5,
+  dpi = 300)
+
+```
+
+### Loading packages
+
+```{r}
+# Loading packages
+## installed.packages("treemapify")
+library(tidyverse)
+library(skimr)
+library(stringr)
+library(stringi)
+library(DescTools)
+library(moments)
+library(treemapify)
+library(ggplot2)
+library(dplyr)
+library(patchwork)
+```
+
+```{r}
+# Cleaning memory
+rm(list=ls(all=TRUE))
+gc()
+```
+
+### Loading data
+
+```{r}
+# Database link
+raw_url <- "https://raw.githubusercontent.com/jmalonso55/Applied-Statistics-for-a-Tropical-Arboretum/refs/heads/main/data/processed_data.csv"
+```
+
+```{r}
+# Loading data
+data_trab <- read.csv(raw_url, sep = ",")
+
+# Checking
+summary(data_trab)
+```
+
+```{r}
+# Checking the data structure
+glimpse(data_trab)
+```
+
+## Preprocessing the data
+
+### Filtering database
+
+```{r}
+# Group 1 - Palmeiras
+palmeira <- data_trab %>%
+  filter(family =="Arecaceae")
+
+#UNIQUE GENERO
+unique(palmeira$genus)
+```
+
+## Pergunta 1: Avalie a população em termos de riqueza a nível de gênero. O arboreto é melhor caracterizado como coleção botânica ou jardim histórico?
+
+```{r}
+palmeira %>% 
+  filter(!is.na(genus)) %>% 
+  count(genus) %>% 
+  arrange(desc(n))
+```
+
+### 🔴 Sugestão do professor
+
+Como vimos nas aulas, sempre que possível, devemos optar por comunicar os resultados por meio de gráficos. Nesse sentido, minha sugestão é apresentar os resultados da tabela em um gráfico de barras. Além disso, procurem colocar títulos nos "code chunks".
+
+```{r}
+# Gráfico com a frequência dos 10 gêneros mais abundantes de palmeiras
+palmeira %>% 
+  filter(!is.na(genus)) %>% 
+  count(genus) %>% 
+  arrange(desc(n)) %>% 
+  slice_head(n = 10) %>% 
+  ggplot(aes(x = n, y = reorder(genus, n))) +
+  geom_col(fill = "lightblue", color = "grey80", alpha = 0.7) +
+  geom_text(aes(label = n), hjust = -0.2, family = "serif", size = 3) +
+  labs(x = "Number of individuals", y = "Genus") +
+  scale_x_continuous(expand = expansion(mult = c(0, 0.1))) +
+  theme_classic() +
+  theme(text = element_text(family = "serif"),
+        panel.grid.major.x = element_line(linetype = "dashed", color = "gray80"),
+        panel.background = element_rect(fill = "grey97"))
+```
+
+
+## Pergunta 2: Como está estruturada a população do arboreto em termos de altura e DAP? As palmeiras e árvores do arboreto estão concentradas em classes específicas de altura e DAP, ou apresentam distribuição ampla de tamanhos?
+
+### Continuous quantitative variable 
+#### Para Altura
+
+```{r}
+# Definir classes de altura
+palmeira <- palmeira %>%
+    mutate(classe_alt = cut(altura, breaks = 10))
+
+# Calcular as frequências para cada classe de altura
+tab_alt <- palmeira %>%
+  count(classe_alt, name = "Freq_obs") %>%
+  mutate(Fre_rel = Freq_obs / sum(Freq_obs),
+    Freq_acum_obs = cumsum(Freq_obs),
+    Freq_acum_rel = cumsum(Fre_rel))
+
+tab_alt <- tab_alt %>%
+  bind_rows(summarise(., classe_alt = "Total",
+                      Freq_obs = sum(Freq_obs),
+                      Fre_rel = sum(Fre_rel),
+                      Freq_acum_obs = sum(Freq_obs),
+                      Freq_acum_rel = 1))
+
+# Visualizar a tabela de frequência da altura
+tab_alt
+```
+
+```{r}
+classes_altura <- c(  1.26, 5.4, 9.5, 13.6, 17.7,  21.8, 25.9, 30, 34.1, 38.2, 42.4)
+```
+
+
+```{r}
+# Table visualization
+hist_alt<-  
+ggplot(palmeira, aes(x = altura)) +
+  geom_histogram(bins = 10, fill = "#A8D0E6", color = "black", breaks = classes_altura, alpha = 0.5) +
+  labs(x = "Heigth (m)", y = "Observed frequency") +
+  scale_y_continuous(expand = c(0, 0), breaks = c(0,50,100,150,200,250)) +
+  scale_x_continuous(breaks = classes_altura) +
+  theme_classic() + 
+  theme(
+    panel.grid.major.y = element_line(
+      linetype = "dashed", color = "gray80")
+  )
+hist_alt
+```
+
+
+#### Para DAP
+
+```{r}
+# Definir classes de DAP
+palmeira <- palmeira %>%
+    mutate(classe_dap = cut(dap, breaks = 10))
+
+# Calcular as frequências para cada classe de DAP
+tab_dap <- palmeira %>%
+  count(classe_dap, name = "Freq_obs") %>%
+  mutate(Fre_rel = Freq_obs / sum(Freq_obs),
+    Freq_acum_obs = cumsum(Freq_obs),
+    Freq_acum_rel = cumsum(Fre_rel))
+
+tab_alt <- tab_alt %>%
+  bind_rows(summarise(., classe_dap = "Total",
+                      Freq_obs = sum(Freq_obs),
+                      Fre_rel = sum(Fre_rel),
+                      Freq_acum_obs = sum(Freq_obs),
+                      Freq_acum_rel = 1))
+
+# Visualizar a tabela de frequência da dap
+tab_dap
+```
+
+```{r}
+classes_dap <- c(10.1, 18.7, 27.2, 35.7, 44.2,52.7, 61.2, 69.7, 78.2, 86.7, 95.3)
+```
+
+```{r}
+# Table visualization
+hist_dap<-  
+ggplot(palmeira, aes(x = dap)) +
+  geom_histogram(bins = 10, fill = "#A8D0E6", color = "black", breaks = classes_dap, alpha = 0.5) +
+  labs(x = "DAP (cm)", y = "Observed frequency") +
+  scale_y_continuous(expand = c(0, 0), breaks = c(0,50,100,150,200,250,300)) +
+  scale_x_continuous(breaks = classes_dap) +
+  theme_classic() + 
+  theme(panel.grid.major.y = element_line(linetype = "dashed", color = "gray80")
+  )
+hist_dap
+```
+
+
+```{r}
+# Objeto creado para armazenar graficos
+hist_alt + hist_dap
+```
+
+### 🔴 Sugestão do professor
+
+Não abordamos esse ponto em aula, mas nunca é tarde para um aprendizado adicional. No cabeçalho do _code chunk_, podemos configurar o tamanho da janela da figura. Isso resolveria o problema de sobreposição dos números no eixo. Vejam:
+
+```{r, fig.height=5, fig.width=10}
+# Junção dos histogramas de altura e DAP
+hist_alt + hist_dap
+```
+
+## Pergunta 3:A relação entre altura e DAP é forte entre indivíduos? O DAP é um bom preditor da altura no arboreto?
+
+```{r}
+disp_r_altdap<-
+ggplot(palmeira, aes(x = dap, y = altura)) +
+  geom_point(size = 2, alpha = 0.7) +
+  geom_smooth(method = "lm",
+              se = F,
+              color = "red") +
+  labs(x = "DAP (cm)",
+       y = "Altura (m)",
+       title = "Relação entre Altura e DAP") +
+  theme_classic()
+disp_r_altdap
+```
+
+```{r}
+mode_altura<-lm(altura ~ dap, palmeira)
+```
+
+
+```{r}
+plot(mode_altura)
+```
+
+
+```{r}
+# A relação entre altura e DAP é forte entre indivíduos? Rta: O teste de correlação de Pearson mostrou uma relação positiva, mas para afirmar a significancia entre DAP e altura das palmeiras é moderada (rho 0,657).
+# Teste de correlacao de pearson
+cor.test(palmeira$dap,
+         palmeira$altura,
+         method = "spearman")
+```
+
+```{r}
+# O DAP é um bom preditor da altura no arboreto?. Rta: sim, mas nao atende os pressupostos do modelo de regressão linear, isso, porque os dados ainda nao se encaixam em um modelo devido aos residuos.
+
+# Modelo linear
+modelo <- lm(altura ~ dap, data = palmeira)
+
+# Resumo do modelo
+summary(modelo)
+```
+
+### 🔴 Sugestão do professor
+
+O último gráfico de dispersão apresentado repetia a informação já comunicada pelo gráfico anterior. Após constatar a correlação pelo coeficiente de Spearman, vocês poderiam ter explorado outras tendências além da reta, como a quadrática (azul) e a regressão local (loess, laranja).
+
+```{r}
+# Gráfico de dispersão para palmeiras no arboreto
+disp_lm<-
+ggplot(palmeira, aes(x = dap, y = altura)) +
+  geom_point(alpha = 0.4) +
+  geom_smooth(method = "lm", formula = y ~ poly(x, 2), se = F, color = "blue") +
+  geom_smooth(method = "loess", se = F, color = "orange") +
+  scale_y_continuous(limits = c(0, NA), expand = c(0, 0)) +
+  labs(x = "DAP (cm)", y = "Height (m)") +
+  theme_classic() +
+  theme(text = element_text(family = "serif"),
+        panel.grid.major.y = element_line(linetype = "dashed", color = "gray80"),
+        panel.grid.major.x = element_line(linetype = "dashed", color = "gray80"),
+        panel.background = element_rect(fill = "grey97"))
+
+# Visualização
+disp_lm
+```
+
+
+## Pergunta 4: Há plantas com proporções incomuns de altura em relação ao DAP? Quais indivíduos apresentam valores extremos de relação altura/DAP, e esses indivíduos merecem atenção no monitoramento?
+
+### Há plantas com proporções incomuns de altura em relação ao DAP?
+
+#### Subset 10 gêneros mais frequentes
+
+```{r}
+# Identificar os 10 gêneros mais frequentes (excluindo NA)
+subset_genero <- palmeira %>%
+  filter(!is.na(genus)) %>%
+  count(genus, sort = TRUE) %>%
+  slice_head(n = 10) %>%
+  pull(genus)
+
+# Criar o subset apenas com esses gêneros
+palmeira2 <- palmeira %>%
+  filter(genus %in% subset_genero)
+#Unique
+unique(palmeira2$genus)
+```
+
+#### Detecting outliers
+
+```{r}
+# Creating a frequency table by gender
+gen_palm <- palmeira2 %>% 
+  filter(!is.na(genus)) %>% 
+  count(genus, name = "Freq_obs") %>% 
+  arrange(desc(Freq_obs))
+
+# Checking
+head(gen_palm, 10)
+```
+
+
+```{r}
+# Construindo um boxplot da relação altura x diametro
+tiff("Boxplot_folhas_versaofinal.tiff", width = 200, height = 120, res = 400, units = "mm")
+
+ggplot(palmeira2, aes(x = genus, y = rel_hd)) + theme_bw(
+  base_size = 11) +
+  geom_boxplot(width = .5,outlier.colour = NA) +
+  geom_jitter(
+    width = .07,
+    alpha = .2,
+    size = 1.5,
+    color = "#A9A9A9"
+  ) + 
+  labs(
+    x = "Gêneros", size = 4,
+    y = "Esbeltez"
+  )
+
+dev.off()
+```
+
+### 🔴 Sugestão do professor
+
+O boxplot não foi exibido porque o código para salvar a figura está sendo executado diretamente no _chunk_. Além disso, devido à extensão dos nomes dos gêneros, seria conveniente inverter as coordenadas do gráfico. A correção seria:
+
+
+```{r}
+# Construindo um boxplot da relação altura x diametro
+ggplot(palmeira2, aes(x = genus, y = rel_hd)) + theme_bw(
+  base_size = 11) +
+  geom_boxplot(width = .5,outlier.colour = NA) +
+  geom_jitter(
+    width = .07,
+    alpha = .2,
+    size = 1.5,
+    color = "orange"
+  ) + 
+  labs(
+    x = "Gêneros", size = 4,
+    y = "Esbeltez"
+  ) +
+  coord_flip()
+```
+
+### Quais indivíduos apresentam valores extremos de relação altura/DAP?, e esses indivíduos merecem atenção no monitoramento?
+
+#### Quem são os outliers?
+
+```{r}
+#Para identificar quem são os outliers
+#Limite inferior
+Q1 <- quantile(palmeira2$rel_hd, 0.25, na.rm = TRUE)
+#Limite superior
+Q3 <- quantile(palmeira2$rel_hd, 0.75, na.rm = TRUE)
+
+IQR <- Q3 - Q1
+
+lim_inf <- Q1 - 1.5 * IQR
+lim_sup <- Q3 + 1.5 * IQR
+
+outliers <- palmeira2 %>%
+  filter(rel_hd < lim_inf | rel_hd > lim_sup)
+
+outliers
+
+#Quantos são?
+nrow(outliers)
+```
+
+```{r}
+# Ordenados mais extremos para o menos extremos
+outliers %>%
+  arrange(desc(rel_hd))
+```
+
+```{r}
+#Quem são os outliers dentro do mesmo gênero?
+
+outliers_genero <- palmeira2 %>%
+  group_by(genus) %>%
+  mutate(
+    Q1 = quantile(rel_hd, 0.25, na.rm = TRUE),
+    Q3 = quantile(rel_hd, 0.75, na.rm = TRUE),
+    IQR = Q3 - Q1,
+    lim_inf = Q1 - 1.5 * IQR,
+    lim_sup = Q3 + 1.5 * IQR
+  ) %>%
+  filter(rel_hd < lim_inf | rel_hd > lim_sup)
+
+```
+
+#### Ordenando pela Esbeltez dentro de cada gênero
+```{r}
+#Ordenando a esbeltex
+outliers_genero %>%
+  arrange(genus, desc(rel_hd)) %>%
+  select(tombo, family, genus, species, altura, dap, rel_hd)
+```
+
+#### Para visualização dos outliers
+```{r}
+#Gráfico de pontos
+#install.packages("ggrepel")
+library(ggrepel)
+
+ggplot(palmeira2,
+       aes(x = genus, y = rel_hd)) +
+  geom_violin(fill = "lightblue") +
+  
+
+  geom_point(data = outliers_genero,
+             size = 2,
+             colour = "red") +
+
+  geom_text_repel(
+    data = outliers_genero,
+    aes(label = tombo),
+    size = 3,
+    max.overlaps = Inf
+  ) +
+
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(angle = 45,
+                               hjust = 1)
+  ) +
+  labs(
+    x = "Gênero",
+    y = "Esbeltez"
+  )
+
+```
+
+```{r}
+str(palmeira2)
+```
+
+### Os indivíduos que apresentam valores extremos de relação altura/DAP merecem atenção no monitoramento?
+
+#### Criação de Modelo esperada x observado
+```{r}
+#Modelo para ver a esbeltez esperada x observado
+model1 <- lm(altura ~ dap, data = palmeira2)
+
+plot(model1)
+summary(model1)
+
+```
+```{r}
+#Residuos
+palmeira2$altura_esperada <- predict(model1)
+
+palmeira2$residuo <- residuals(model1)
+
+palmeira2$residuo_pad <- rstandard(model1)
+
+```
+
+```{r}
+#Visualização os outliers 
+ggplot(palmeira2,
+       aes(x = dap, y = altura)) +
+  
+  geom_point(alpha = 0.4, color = "grey50") +
+  
+  geom_line(aes(y = altura_esperada),
+            color = "blue",
+            linewidth = 1) +
+  
+  geom_point(data = outliers,
+             color = "red",
+             size = 3) +
+  
+  geom_text_repel(
+    data = outliers,
+    aes(label = name),
+    size = 3,
+    max.overlaps = Inf
+  ) +
+  
+  theme_bw() +
+  labs(
+    x = "DAP (cm)",
+    y = "Altura (m)",
+    title = "Relação altura-DAP em palmeiras",
+    subtitle = "Indivíduos destacados apresentam alturas maiores ou menores que o esperado"
+  )
+```
+
+
+### 🔴 Sugestão do professor
+
+Lembro que, pelas boas práticas de programação, o ideal é carregar todos os pacotes utilizados no início do script.
+
+A ideia de identificar os indivíduos extremos no gráfico de dispersão foi muito boa. No entanto, não vejo necessidade de incluir uma linha de tendência no gráfico, muito menos de gerar um modelo que, como já verificamos, não atende aos pressupostos necessários para esse tipo de ajuste.
+
+## Pergunta 5: Os gêneros mais abundantes são também os dominantes? Avaliem quais concentram os maiores valores de altura e área basal.
+
+
+```{r}
+# Avaliem quais concentram os maiores valores de altura e área basal.
+altbasal_genero <- palmeira %>%
+  filter(!is.na(genus)) %>%
+  group_by(genus) %>%
+  summarise(
+    n = n(),
+    altura_media = mean(altura, na.rm = TRUE),
+    altura_max = max(altura, na.rm = TRUE),
+    area_basal_total = sum(area_basal, na.rm = TRUE),
+    area_basal_media = mean(area_basal, na.rm = TRUE)
+  ) %>%
+  arrange(desc(area_basal_total))
+
+altbasal_genero
+```
+
+
+```{r}
+palmeira %>%
+  filter(!is.na(genus)) %>%
+  group_by(genus) %>% 
+  reframe(freq=n(), dom = sum(area_basal))%>% 
+  arrange(desc(freq))
+```
+
+```{r}
+palmeira %>% 
+      filter(!is.na(genus)) %>%
+ group_by(genus) %>% 
+  summarise(
+    freq = n(),
+    dom = sum(area_basal, na.rm = TRUE)
+  ) %>% 
+  arrange(desc(dom))
+```
+
+
+```{r}
+# Para avaliar a relação entre abundância e dominância
+cor.test(
+  altbasal_genero$n,
+  altbasal_genero$area_basal_total,
+  method = "spearman"
+)
+```
+
+
+```{r}
+# Gráfico de dispersão entre a abundância dos gêneros e sua área basal total.
+
+
+ggplot(altbasal_genero,
+       aes(x = log(n),
+           y = log(area_basal_total))) +
+
+  geom_point(size = 3, alpha = 0.7) +
+
+  geom_smooth(method = "lm", se = TRUE) +
+
+  labs(
+    x = "Abundance",
+    y = "Total basal area"
+  ) +
+
+  theme_classic()
+```
+
+
+### 🔴 Sugestão do professor
+
+Uma sugestão para aprimorar a visualização seria identificar os gêneros no gráfico. Além disso, os títulos dos eixos deveriam ser corrigidos para log(abundância) e log(área_basal), de modo a refletir as transformações realizadas na escala das variáveis. Vejam:
+
+
+```{r}
+# Gráfico de dispersão entre a abundância dos gêneros e sua área basal total.
+ggplot(altbasal_genero, aes(x = log(n), y = log(area_basal_total))) +
+  geom_point(size = 3, alpha = 0.7) +
+  geom_text_repel(aes(label = genus), size = 2, max.overlaps = Inf) +
+  geom_smooth(method = "lm", se = TRUE) +
+  labs(x = "log(Abundance)", y = "log(Total basal area m²)") +
+  theme_classic()
+```
+
+
+Acho que, para discutir essa questão no artigo, podemos utilizar outro tipo de gráfico: o _bump chart_. Sei que não abordamos esse tipo de visualização em aula, ele não me ocorreu naquele momento, apenas depois. Mas vejam abaixo como o gráfico fica mais informativo:
+
+
+```{r}
+# Rankeando área basal e abundância
+rank_genero <- altbasal_genero %>%
+  filter(n >= 3) %>%
+  mutate(rank_abundancia = rank(-n, ties.method = "first"), rank_area_basal = rank(-area_basal_total, ties.method = "first"))
+```
+
+
+```{r}
+# Convertendo a tabela para o formato longo
+rank_long <- rank_genero %>%
+  select(genus, rank_abundancia, rank_area_basal) %>%
+  pivot_longer(cols = c(rank_abundancia, rank_area_basal), names_to = "variavel", values_to = "ranking") %>%
+  mutate(variavel = recode(variavel, rank_abundancia = "Abundance", rank_area_basal = "Total basal area"),
+    variavel = factor(variavel, levels = c("Abundance", "Total basal area")))
+```
+
+```{r}
+# Gerando paleta de cores
+generos <- sort(unique(rank_long$genus))
+
+cores_genus <- colorRampPalette(RColorBrewer::brewer.pal(8, "Dark2"))(length(generos))
+
+names(cores_genus) <- generos
+```
+
+
+```{r}
+# Visualizando os resultados
+ggplot(rank_long, aes(x = variavel, y = ranking, group = genus, color = genus)) +
+  geom_line(alpha = 0.6) +
+  geom_point(size = 2) +
+  geom_text(data = rank_long %>% filter(variavel == "Abundance"), aes(label = genus), hjust = 1.15, size = 2.5) +
+  geom_text(data = rank_long %>% filter(variavel == "Total basal area"), aes(label = genus), hjust = -0.15, size = 2.5) +
+  scale_y_reverse(breaks = seq(1, max(rank_long$ranking), by = 1)) +
+  scale_color_manual(values = cores_genus) +
+  coord_cartesian(clip = "off") +
+  labs(x = NULL, y = "Ranking") +
+  theme_classic() +
+  theme(text = element_text(family = "serif"),
+        legend.position = "none",
+        plot.margin = margin(5.5, 60, 5.5, 60))
+```
+
+
+## Pergunta 6: Avaliem a altura dominante em canteiros com mais de 10 plantas.
+
+```{r}
+# Database link
+raw_url <- "https://raw.githubusercontent.com/jmalonso55/Applied-Statistics-for-a-Tropical-Arboretum/refs/heads/main/data/processed_data.csv"
+```
+
+```{r}
+# Loading data
+data_trab <- read.csv(raw_url, sep = ",")
+
+```
+
+### Seleção dos canteiros com mais de 10 indivíduos
+
+```{r}
+#Seleção canteiros com + de 10 indivíduos
+canteiros_validos <- palmeira %>%
+  group_by(sec_cant) %>%
+  filter(n() > 10)
+
+unique(canteiros_validos$sec_cant)
+```
+
+### Média das 5 árvores mais altas dos 41 canterios (com mais de 10 plantas)
+
+```{r}
+#Selecionar a planta mais alta dos canteiros para saber a altura dominante 
+altura_dom <- canteiros_validos %>%
+  group_by(sec_cant) %>%
+  slice_max(altura, n = 1) %>%
+  summarise(
+    altura_dominante = mean(altura),
+    n_ind = first(n())
+  )
+```
+
+```{r}
+#Visualização
+#plot de plantas dominantes por canteiro 
+ggplot(altura_dom,
+       aes(x = reorder(sec_cant, altura_dominante),
+           y = altura_dominante)) +
+  geom_col() +
+  coord_flip() +
+  theme_bw() +
+  labs(
+    x = "Canteiro",
+    y = "Altura dominante (m)"
+  )
+
+```
+
+### 🔴 Sugestão do professor
+
+Faltou um pouco mais de cuidado na integração dos códigos produzidos pelos dois subgrupos durante o trabalho de sexta-feira. O código apresentado recarrega a base de dados de modo desnecessário, o que poderia ser evitado com uma revisão mais atenta da estrutura do script.
+
+## Pergunta7: Seria possível agrupar canteiros ou gêneros de alguma forma?
+
+### Agrupamento por estrutura
+```{r}
+#Agrupar os canteiros por estrutura 
+estrutura <- canteiros_validos %>%
+  group_by(sec_cant) %>%
+  summarise(
+    n = n(),
+    altura_media = mean(altura),
+    altura_max = max(altura),
+    dap_medio = mean(dap),
+    area_basal_total = sum(area_basal),
+    esbeltez_media = mean(rel_hd)
+  )
+```
+
+```{r}
+# Agrupando canteiros por estrutura
+
+estrutura$sec_cant <- as.factor(estrutura$sec_cant)
+estrutura$n <- as.factor(estrutura$n)
+
+estrutura <- canteiros_validos %>%
+  group_by(sec_cant) %>%
+  summarise(
+    n_ind = n(),
+    altura_media = mean(altura, na.rm = TRUE),
+    altura_max = max(altura, na.rm = TRUE),
+    dap_medio = mean(dap, na.rm = TRUE),
+    area_basal_total = sum(area_basal, na.rm = TRUE)
+  )
+
+view(estrutura)
+```
+
+```{r}
+#Heatmap
+
+library(tidyr)
+
+estrutura_long <- estrutura %>%
+  pivot_longer(
+    cols = -sec_cant,
+    names_to = "variavel",
+    values_to = "valor"
+  )
+
+ggplot(estrutura_long,
+       aes(x = variavel,
+           y = sec_cant,
+           fill = valor)) +
+  geom_tile() +
+  theme_bw() +
+  labs(x = "",
+       y = "Canteiro")
+```
+
+```{r}
+# pca
+pca <- prcomp(estrutura[c(3:6)])
+
+plot(pca$x[,1],
+     pca$x[,2],
+     pch = 19,
+     xlab = "PC1",
+     ylab = "PC2")
+
+# text(pca$x[,1],
+#      pca$x[,2],
+#      labels = estrutura$sec_cant,
+#      pos = 3)
+
+```
+
+## Para Arecaceae
+
+### Façam um treemap com genero e espécie.
+
+```{r}
+# Dados para o treemap
+tree_palmeira <- palmeira %>%
+  filter(!is.na(genus),
+         !is.na(species)) %>%
+  group_by(genus, species) %>%
+  summarise(freq = n()) %>%
+  ungroup()
+
+# Treemap
+ggplot(tree_palmeira,
+       aes(area = freq, fill = genus, label = species, subgroup = genus)) +
+  geom_treemap() +
+  geom_treemap_subgroup_border(color = "white", size = 2) +
+  geom_treemap_subgroup_text(place = "centre", grow = TRUE, alpha = 0.5,color = "black") +
+  geom_treemap_text(colour = "white", place = "centre", reflow = TRUE) +
+  theme(legend.position = "none")
+```
+
+
+```{r}
+# Top 10 gêneros mais abundantes
+top10_generos <- palmeira %>%
+  count(genus, sort = TRUE) %>%
+  slice_head(n = 10) %>%
+  pull(genus)
+
+# Dados para o treemap
+tree_palmeira <- palmeira %>%
+  filter(genus %in% top10_generos, !is.na(genus),!is.na(species)) %>%
+  group_by(genus, species) %>%
+  summarise(freq = n()) %>%
+  ungroup()
+
+# Treemap
+ggplot(tree_palmeira,
+       aes(area = freq, fill = genus, label = species, subgroup = genus)) +
+  geom_treemap() +
+  geom_treemap_subgroup_border(color = "white", size = 2) +
+  geom_treemap_subgroup_text(place = "centre",grow = TRUE,alpha = 0.5,color = "black") +
+  geom_treemap_text(colour = "white", place = "centre", reflow = TRUE) +
+  theme(legend.position = "none")
+```
+
+
+### Os dois gêneros mais abundantes da família representam ela em termos de altura e DAP?
+
+
+```{r}
+# Criar os grupos
+palmeira_anova <- palmeira %>%
+  mutate( grupo = case_when(genus == "Roystonea" ~ "Roystonea",genus == "Livistona" ~ "Livistona",
+      TRUE ~ "Outros"))
+```
+
+
+```{r}
+# ANOVA para altura. Rta: sugere que os dois gêneros mais abundantes não representam perfeitamente a estrutura vertical geral das palmeiras do arboreto, já que a altura varia fortemente entre os grupos.
+anova_altura <- aov(altura ~ grupo, data = palmeira_anova)
+
+summary(anova_altura)
+```
+
+```{r}
+shapiro.test(anova_altura$residuals)
+```
+
+
+```{r}
+TukeyHSD(anova_altura)
+```
+
+
+```{r}
+# ANOVA para DAP. Rta: os dois gêneros mais abundantes não representam adequadamente a estrutura diamétrica geral da família.
+
+anova_dap <- aov(dap ~ grupo, data = palmeira_anova)
+
+summary(anova_dap)
+```
+
+
+```{r}
+TukeyHSD(anova_dap)
+```
+
+### 🔴 Sugestão do professor
+
+Como vocês verificaram que a ANOVA para altura não atendeu aos pressupostos, seus resultados não deveriam ter sido considerados, tampouco deveria ter sido realizado o teste de médias. Para o DAP, os pressupostos não foram avaliados. Vocês deveriam ter tentado transformar as variáveis ou realizar testes não paramétricos. Seguem as correções:
+
+```{r}
+library(bestNormalize)
+```
+
+```{r}
+# Verificando melhor transformação
+bestNormalize(palmeira_anova$altura)
+```
+
+
+```{r}
+# Aplicando ordenação quantílica
+quant_alt <- orderNorm(palmeira_anova$altura)
+```
+
+```{r}
+# Refazendo a ANOVA
+ano_palm <- aov(quant_alt$x.t ~ palmeira_anova$grupo)
+```
+
+
+```{r}
+# Testando normalidade dos resíduos
+shapiro.test(ano_palm$residuals)
+```
+
+```{r}
+# Testando homogeneidade das variâncias
+bartlett.test(quant_alt$x.t, palmeira_anova$grupo)
+```
+
+```{r}
+# Realizando o teste de Kruskal-Wallis
+k_palm <- kruskal.test(altura ~ grupo, data = palmeira_anova)
+
+# Visualizando
+k_palm
+```
+
+```{r}
+library(rstatix)
+```
+
+
+```{r}
+# Teste de Dunn para comparações múltiplas
+palmeira_anova %>%
+  dunn_test(altura ~ grupo, p.adjust.method = "holm")
+```
+
+```{r}
+# Transformando grupo em fator
+palmeira_anova <- palmeira_anova %>%
+  mutate(grupo = factor(grupo, levels = c("Roystonea", "Livistona", "Outros")))
+
+# Resultado do teste
+letras_mediana <- palmeira_anova %>%
+  group_by(grupo) %>%
+  summarise(mediana = median(altura, na.rm = TRUE), .groups = "drop") %>%
+  arrange(desc(mediana)) %>%
+  mutate(letra = letters[1:n()], label = paste0(sprintf("%.1f", mediana), " ", letra))
+```
+
+
+```{r}
+# Visualização
+ggplot(palmeira_anova, aes(x = grupo, y = altura, color = grupo)) +
+  geom_boxplot(outlier.shape = NA, width = 0.6) +
+  geom_jitter(width = 0.15, alpha = 0.3, size = 1.5) +
+  geom_text(data = letras_mediana, aes(x = grupo, y = mediana, label = label, color = grupo), inherit.aes = FALSE, hjust = -2, size = 3.5, family = "serif") +
+  coord_cartesian(clip = "off") +
+  labs(x = NULL, y = "Altura (m)") +
+  theme_classic() +
+  theme(legend.position = "none",
+    text = element_text(family = "serif"),
+    plot.margin = margin(5.5, 40, 5.5, 5.5))
+```
+
+
+
+```{r}
+# Verificando melhor transformação
+bestNormalize(palmeira_anova$dap)
+```
+
+
+```{r}
+# Aplicando ordenação quantílica
+quant_dap <- orderNorm(palmeira_anova$dap)
+```
+
+```{r}
+# Refazendo a ANOVA
+ano_palm_d <- aov(quant_dap$x.t ~ palmeira_anova$grupo)
+```
+
+
+```{r}
+# Testando normalidade dos resíduos
+shapiro.test(ano_palm_d$residuals)
+```
+
+```{r}
+# Testando homogeneidade das variâncias
+bartlett.test(quant_dap$x.t, palmeira_anova$grupo)
+```
+
+```{r}
+# Realizando o teste de Kruskal-Wallis
+k_palm_d <- kruskal.test(dap ~ grupo, data = palmeira_anova)
+
+# Visualizando
+k_palm_d
+```
+
+
+```{r}
+# Teste de Dunn para comparações múltiplas
+palmeira_anova %>%
+  dunn_test(dap ~ grupo, p.adjust.method = "holm")
+```
+
+```{r}
+# Resultado do teste
+letras_mediana_dap <- palmeira_anova %>%
+  group_by(grupo) %>%
+  summarise(mediana = median(dap, na.rm = TRUE), .groups = "drop") %>%
+  arrange(desc(mediana)) %>%
+  mutate(letra = letters[1:n()], label = paste0(sprintf("%.1f", mediana), " ", letra))
+```
+
+
+```{r}
+# Visualização
+ggplot(palmeira_anova, aes(x = grupo, y = dap, color = grupo)) +
+  geom_boxplot(outlier.shape = NA, width = 0.6) +
+  geom_jitter(width = 0.15, alpha = 0.3, size = 1.5) +
+  geom_text(data = letras_mediana_dap, aes(x = grupo, y = mediana, label = label, color = grupo), inherit.aes = FALSE, hjust = -2, size = 3.5, family = "serif") +
+  coord_cartesian(clip = "off") +
+  labs(x = NULL, y = "Altura (m)") +
+  theme_classic() +
+  theme(legend.position = "none",
+    text = element_text(family = "serif"),
+    plot.margin = margin(5.5, 40, 5.5, 5.5))
+```
+
+
+### Avaliem a altura dominante de Roystonea nos canteiros em que ela ocorre.
+
+#### Filtrando por gênero Roystonea
+
+```{r}
+# Filtrando Roystonea
+roystonea <- palmeira %>%
+  filter(genus == "Roystonea")
+```
+
+#### Avaliando o gênero por altura dominante
+
+```{r}
+#Calcular a altura dominante no genero
+altura_dom_roy <- roystonea %>%
+  group_by(sec_cant) %>%
+  slice_max(altura, n = 1) %>%
+  summarise(
+    altura_dominante = mean(altura),
+    n_ind = first(n())
+  )
+```
+
+
+```{r}
+#Visualização
+# para as 10 roystonea mais altas
+roystonea2 <- roystonea %>%
+  group_by(sec_cant) %>%
+  slice_max(altura, n = 1) %>%
+  summarise(
+    altura_dominante = mean(altura),
+    n_ind = first(n())) %>%
+  slice_head(n = 10)
+
+#plot de roystonea altura dominantes por canteiro 
+ggplot(roystonea2,
+       aes(x = reorder(sec_cant, altura_dominante),
+           y = altura_dominante)) +
+  geom_col() +
+  coord_flip() +
+  theme_bw() +
+  labs(
+    x = "Canteiro",
+    y = "Altura (m) dominante Roystonea"
+  )
+
+
+
+```
+
+
+### 🔴 Sugestão do professor
+
+Minha sugestão seria filtrar os canteiros com três ou mais indivíduos de _Roystonea_, pois não faria sentido estimar a altura dominante da espécie em canteiros com menor número de indivíduos.
+
+
+```{r}
+# Seleção canteiros com 3 ou mais indivíduos de Roystonea
+canteiros_roy <- palmeira %>%
+  filter(genus == "Roystonea") %>% 
+  group_by(sec_cant) %>%
+  filter(n() >= 3) %>% 
+  ungroup()
+
+unique(canteiros_roy$sec_cant)
+```
+
+```{r}
+# Calcular a altura dominante no genero
+altura_dom_roy <- canteiros_roy %>%
+  group_by(sec_cant) %>%
+  slice_max(altura, n = 1, with_ties = FALSE)
+```
+
+```{r}
+# Gráfico da altura dominante de Roystonea 
+ggplot(altura_dom_roy, aes(x = reorder(sec_cant, altura), y = altura)) +
+  geom_col() +
+  coord_flip() +
+  theme_bw() +
+  labs(x = "Canteiro", y = "Altura dominante (m)")
+```
+
+
+
+
+## Seria possível ajustar um bom modelo para explicar a relação entre altura e DAP para Roystonea?
+
+```{r}
+# Filtrar Roystonea
+Roystonea <- palmeira %>%
+  filter(genus == "Roystonea")
+```
+
+```{r}
+boxplot(Roystonea$rel_hd)
+```
+
+
+```{r}
+# Limites para detectar outliers
+Q1 <- quantile(Roystonea$rel_hd, 0.25, na.rm = TRUE)
+Q3 <- quantile(Roystonea$rel_hd, 0.75, na.rm = TRUE)
+
+IQR_alt <- IQR(Roystonea$rel_hd, na.rm = TRUE)
+
+lim_inf <- Q1 - 1.5 * IQR_alt
+lim_sup <- Q3 + 1.5 * IQR_alt
+
+# Filtrar sem outliers
+Roystonea_sem_out <- Roystonea %>%
+  filter(
+    rel_hd >= lim_inf,
+    rel_hd <= lim_sup
+  )
+```
+
+```{r}
+Roystonea_sem_out <- Roystonea_sem_out[-c(525, 533, 354, 231, 32), ]
+```
+
+
+```{r}
+# Modelo linear
+modelo_lm_roys <- lm(altura ~ dap, data = Roystonea_sem_out)
+
+```
+
+```{r}
+shapiro.test(modelo_lm_roys$residuals)
+```
+
+
+```{r}
+# Os modelo avaliados nao atenderam os pressupostos, principalmente na homogenidade das variancias.
+# Resumo do modelo
+plot(modelo_lm_roys)
+```
+
+```{r}
+# Modelo quadrático
+modelo_quad_roys <- lm(altura ~ dap + I(dap^2), data = Roystonea_sem_out)
+```
+
+
+```{r}
+plot(modelo_quad_roys)
+```
+
+
+```{r}
+shapiro.test(modelo_quad_roys$residuals)
+```
+
+
+```{r}
+# Modelo log
+modelo_log_roys <- lm(altura ~ log(dap), data = Roystonea_sem_out)
+```
+
+```{r}
+shapiro.test(modelo_log_roys$residuals)
+```
+
+
+```{r}
+plot(modelo_log_roys)
+```
+
+### 🔴 Sugestão do professor
+
+Aqui, vocês poderiam ter utilizado o script que enviei após a aula, no qual foram ajustados alguns modelos para _Roystonea_, considerando espécie como covariável e canteiros como efeito aleatório.
+
+De qualquer forma, vocês também poderiam ter testado formalmente a homogeneidade das variâncias e observado que o modelo linear atendeu aos pressupostos. Vejam o código abaixo:
+
+
+```{r}
+library(lmtest)
+```
+
+
+```{r}
+# Testando homogeneidade no modelo linear
+bptest(modelo_lm_roys)
+```
+
+```{r}
+# Resultados da regressão
+summary(modelo_lm_roys)
+```
+
+```{r}
+library(ggpmisc)
+```
+
+
+```{r}
+# Visualização do modelo
+ggplot(data = Roystonea_sem_out, aes(x = dap, y = altura)) +
+  geom_point() +
+  geom_smooth(method = "lm", formula = y ~ x, se = TRUE) +
+  stat_poly_eq(formula = y ~ x, aes(label = paste(after_stat(eq.label), after_stat(rr.label), after_stat(p.value.label), sep = "~~~")), parse = TRUE) +
+  scale_y_continuous(limits = c(0, NA), expand = c(0, 0)) +
+  theme_classic() +
+  theme(text = element_text(family = "serif"),
+        panel.grid.major.y = element_line(linetype = "dashed", color = "gray80"),
+        panel.grid.major.x = element_line(linetype = "dashed", color = "gray80"),
+        panel.background = element_rect(fill = "grey97"))
+```
+
+
+
+```{r}
+# Testando homogeneidade no modelo quadrático
+bptest(modelo_quad_roys)
+```
+
+
+```{r}
+# Testando homogeneidade no modelo log
+bptest(modelo_log_roys)
+```
+
+
+## Há diferenças de altura entre palmeiras com caule único e multiplos caules? E entre os principais gêneros da família?
+
+#### Gráfico para visualizar a diferença de altura entre palmeiras com caule único e multiplos caules
+
+```{r}
+#Gráfico
+ggplot(palmeira,
+       aes(x = multicaule_l,
+           y = altura)) +
+  geom_boxplot() +
+  theme_bw() +
+  labs(x = "Tipo de caule",
+       y = "Altura (m)")
+```
+
+```{r}
+#teste shapiro
+shapiro.test(palmeira$altura)
+
+#Distribuição não normal
+```
+
+#### Teste para ver a diferença
+```{r}
+#Wilcox
+wilcox.test(
+  altura ~ multicaule_l,
+  data = palmeira
+)
+
+#É diferente
+```
+
+### E entre os principais gêneros da família?
+
+```{r}
+#PLOT GENERO
+ggplot(palmeira2,
+       aes(x = reorder(genus, altura, median),
+           y = altura)) +
+  geom_boxplot() +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(
+      angle = 45,
+      hjust = 1
+    )
+  )
+```
+
+#### Teste para ver diferença
+```{r}
+#Teste de kruskal
+kruskal.test(
+  altura ~ genus,
+  data = palmeira2
+)
+
+#Para ver diferença entre grupos
+## Pós teste kruskal: Teste de Dunn com PMCMR
+#install.packages("PMCMRplus")
+#Primeiro voce transforma o sua variavel de comparacao em fator
+library(PMCMRplus)
+
+## Dunn's all-pairs comparison test
+
+#Primeiro voce transforma o sua variavel de comparacao em fator
+palmeira2$genus <- as.factor(palmeira2$genus)
+
+ph_genero <-kwAllPairsDunnTest(palmeira2$altura~palmeira2$genus, data = palmeira2,
+                          p.adjust.method = "bonferroni", list = TRUE)
+summary(ph_genero)
+
+plot(ph_genero)
+
+```
+
+
+### 🔴 Sugestão do professor
+
+A solução proposta foi muito boa, mas o gráfico ficou pouco legível. Vocês poderiam ter utilizado ferramentas de IA para auxiliar na edição da visualização e melhorar sua apresentação. Além disso, foram gerados muitos outputs em um único _chunk_, o que produz várias janelas de resultados e torna a visualização e a renderização do Markdown confusas. Vejam abaixo:
+
+
+```{r}
+# Realizando o teste de Kruskal-Wallis
+kruskal.test(altura ~ genus, data = palmeira2)
+```
+
+
+```{r}
+# Realizando o teste de Dunn
+ph_genero <- kwAllPairsDunnTest(altura ~ genus, data = palmeira2, p.adjust.method = "holm")
+
+summary(ph_genero)
+```
+
+
+```{r}
+# Visualizando resultados
+par(mar = c(6, 5, 2, 2), las = 2, cex.axis = 0.7, cex.lab = 0.9)
+
+plot(ph_genero, ylab = "Altura (m)", xlab = "", main = "")
+```
+
+
+
