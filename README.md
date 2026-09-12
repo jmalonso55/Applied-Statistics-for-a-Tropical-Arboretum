@@ -19,7 +19,7 @@ The teaching materials and rendered analyses are available at:
 ## Study and course context
 
 The materials were developed for a graduate-level applied statistics course
-offered by the Escola Nacional de BotÃ¢nica Tropical of the Rio de Janeiro
+offered by the Escola Nacional de Botânica Tropical of the Rio de Janeiro
 Botanical Garden. The course combined statistical concepts with reproducible
 analyses of an institutional living collection.
 
