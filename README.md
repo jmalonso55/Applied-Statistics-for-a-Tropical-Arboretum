@@ -7,8 +7,7 @@ outputs, and teaching materials associated with the study:
 > Baseline for Living Collection Monitoring*
 
 The project uses a dendrometric census of the Rio de Janeiro Botanical Garden
-Arboretum as a real-world dataset for teaching applied statistics. The
-botanical analyses characterize the structure of the living collection at the
+Arboretum as a real-world dataset for teaching applied statistics. The analyses characterize the structure of the living collection at the
 time of the census and provide a baseline for future monitoring.
 
 ## Project website
