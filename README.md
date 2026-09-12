@@ -115,8 +115,6 @@ may also change over time.
 
 ## Interpretation and limitations
 
-- The data represent a single census conducted in 2021â€“2022. They provide a
-  baseline but do not, by themselves, demonstrate temporal change.
 - The dataset derives from operational field records and is subject to the
   measurement and documentation limitations described in the data dictionary
   and manuscript.
@@ -129,7 +127,7 @@ may also change over time.
   processing, documentation, and analytical workflow.
 - **Bruno Coutinho Kurtz**: data collection, preliminary studies and analyses,
 - and validation of the analyses.
-- **ThaÃ­s Marques Hidalgo Almeida**: principal responsibility for field data
+- **Thaí­s Marques Hidalgo Almeida**: principal responsibility for field data
   collection, preliminary studies and analyses.
 
 Authorship of the associated manuscript is distinct from responsibility for the
