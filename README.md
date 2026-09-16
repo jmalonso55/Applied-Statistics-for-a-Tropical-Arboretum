@@ -124,14 +124,10 @@ may also change over time.
 
 ## Dataset creators and contributions
 
-- **Jorge Makhlouta Alonso**: repository responsibility, data curation, data
-  processing, documentation, and analytical workflow.
-- **Marcus Alberto Nadruz Coelho**: curator of living collections, data collection
-- supervisor.
-- **Bruno Coutinho Kurtz**: data collection, preliminary studies and analyses,
-- and validation of the analyses.
-- **Thaí­s Moreira Hidalgo Almeida**: principal responsibility for field data
-  collection, preliminary studies and analyses.
+- **Jorge Makhlouta Alonso**: repository responsibility, data curation, data processing, documentation, and analytical workflow.
+- **Marcus Alberto Nadruz Coelho**: curator of living collections, data collection supervisor.
+- **Bruno Coutinho Kurtz**: data collection, preliminary studies and analyses, and validation of the analyses.
+- **Thaí­s Moreira Hidalgo Almeida**: principal responsibility for field data collection, preliminary studies and analyses.
 
 Authorship of the associated manuscript is distinct from responsibility for the
 dataset and repository.
