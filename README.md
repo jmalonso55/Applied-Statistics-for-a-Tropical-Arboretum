@@ -126,9 +126,11 @@ may also change over time.
 
 - **Jorge Makhlouta Alonso**: repository responsibility, data curation, data
   processing, documentation, and analytical workflow.
+- **Marcus Alberto Nadruz Coelho**: curator of living collections, data collection
+- supervisor.
 - **Bruno Coutinho Kurtz**: data collection, preliminary studies and analyses,
 - and validation of the analyses.
-- **Thaí­s Marques Hidalgo Almeida**: principal responsibility for field data
+- **Thaí­s Moreira Hidalgo Almeida**: principal responsibility for field data
   collection, preliminary studies and analyses.
 
 Authorship of the associated manuscript is distinct from responsibility for the
@@ -144,7 +146,7 @@ Baseline for Living Collection Monitoring*. Manuscript under review.
 
 ## Citation
 
-Alonso, J. M.; Kurtz, B. C.; Almeida, T. M. H. (2026). *Applied Statistics for a Tropical Arboretum: Dendrometric Data, Teaching Materials, and Analytical Code* (Version 1.0.0) [Dataset]. Zenodo. https://doi.org/10.5281/zenodo.22730213
+Alonso, J. M.; Coelho, M. A. N.; Kurtz, B. C.; Almeida, T. M. H. (2026). *Applied Statistics for a Tropical Arboretum: Dendrometric Data, Teaching Materials, and Analytical Code* (Version 1.0.0) [Dataset]. Zenodo. https://doi.org/10.5281/zenodo.22730213
 
 ## License
 
