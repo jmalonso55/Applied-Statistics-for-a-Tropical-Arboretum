@@ -1,0 +1,32 @@
+cff-version: 1.2.0
+message: "If you use these data or materials, please cite the archived repository using the citation below."
+type: dataset
+
+title: "Applied Statistics for a Tropical Arboretum"
+
+authors:
+  - family-names: "Alonso"
+    given-names: "Jorge Makhlouta"
+    orcid: "https://orcid.org/0000-0002-6614-714X"
+
+  - family-names: "Coelho"
+    given-names: "Marcus Alberto Nadruz"
+    orcid: "https://orcid.org/0000-0003-1039-6777"
+
+  - family-names: "Kurtz"
+    given-names: "Bruno Coutinho"
+    orcid: "https://orcid.org/0000-0003-0306-4969"
+
+  - family-names: "Almeida"
+    given-names: "Thaís M. H."
+    orcid: "https://orcid.org/0000-0002-8196-6418"
+
+version: "1.0.0"
+
+doi: "10.5281/zenodo.22730213"
+
+date-released: 2026-09-12
+
+repository-code: "https://github.com/jmalonso55/Applied-Statistics-for-a-Tropical-Arboretum"
+
+url: "https://jmalonso55.github.io/Applied-Statistics-for-a-Tropical-Arboretum/"
