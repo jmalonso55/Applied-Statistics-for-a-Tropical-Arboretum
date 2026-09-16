@@ -6,7 +6,7 @@
 
   <meta
     name="description"
-    content="Reproducible analyses and R code for Applied Statistics for a Tropical Arboretum."
+    content="Teaching materials, reproducible analyses and R code based on dendrometric census data from the Rio de Janeiro Botanical Garden."
   >
 
   <title>Applied Statistics for a Tropical Arboretum</title>
@@ -90,7 +90,7 @@
       color: var(--text-light);
     }
 
-      .source-files {
+    .source-files {
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -137,7 +137,7 @@
       outline: 3px solid #79a98d;
       outline-offset: 3px;
     }
-    
+
     .analysis-grid {
       display: grid;
       grid-template-columns: repeat(
@@ -200,6 +200,38 @@
       font-size: 0.95rem;
     }
 
+    .resources {
+      margin-top: 48px;
+    }
+
+    .resources ul {
+      margin: 0;
+      padding: 22px 24px 22px 44px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      box-shadow: var(--shadow);
+    }
+
+    .resources li + li {
+      margin-top: 9px;
+    }
+
+    .resources a {
+      color: var(--green);
+      font-weight: 600;
+      text-underline-offset: 3px;
+    }
+
+    .resources a:hover {
+      color: var(--green-dark);
+    }
+
+    .resources a:focus-visible {
+      outline: 3px solid #79a98d;
+      outline-offset: 3px;
+    }
+
     footer {
       padding: 26px 20px;
       color: var(--text-light);
@@ -209,9 +241,33 @@
       font-size: 0.9rem;
     }
 
+    footer p {
+      margin: 4px 0;
+    }
+
+    footer a {
+      color: var(--green);
+      font-weight: 600;
+      text-underline-offset: 3px;
+    }
+
+    footer a:hover {
+      color: var(--green-dark);
+    }
+
+    footer a:focus-visible {
+      outline: 3px solid #79a98d;
+      outline-offset: 3px;
+    }
+
     @media (max-width: 520px) {
       header {
         padding: 46px 20px;
+      }
+
+      main {
+        width: min(100% - 28px, 900px);
+        padding-top: 36px;
       }
 
       .source-files {
@@ -223,11 +279,6 @@
         width: 100%;
         text-align: center;
         white-space: normal;
-      }
-      
-      main {
-        width: min(100% - 28px, 900px);
-        padding-top: 36px;
       }
 
       .analysis-card {
@@ -243,21 +294,21 @@
       <h1>Applied Statistics for a Tropical Arboretum</h1>
 
       <p>
-          Teaching materials, reproducible analyses and R code based on
-          dendrometric census data from the living collection of the
-          Rio de Janeiro Botanical Garden.
-      </p>    
+        Teaching materials, reproducible analyses and R code based on
+        dendrometric census data from the living collection of the
+        Rio de Janeiro Botanical Garden.
+      </p>
     </div>
   </header>
 
   <main>
     <section aria-labelledby="analyses-title">
       <div class="section-heading">
-        <h2 id="analyses-title">Course Analyses</h2>
+        <h2 id="analyses-title">Course analyses</h2>
 
         <p>
-          Select a topic to view its the corresponding rendered R Markdown 
-          document, including code, outputs and statistical results..
+          Select a topic to view the corresponding rendered R Markdown
+          document, including code, outputs and statistical results.
         </p>
       </div>
 
@@ -280,7 +331,7 @@
           Browse source files
         </a>
       </div>
-      
+
       <div class="analysis-grid">
         <a
           class="analysis-card"
@@ -337,13 +388,15 @@
           <span class="analysis-number">4</span>
 
           <div class="analysis-content">
-            <h3>Statistical inference, hypothesis testing and sampling</h3>
+            <h3>
+              Statistical inference, hypothesis testing and sampling
+            </h3>
 
             <p>
-              Inference, confidence intervals, hypothesis tests and sampling 
-              methods applied to the arboretum data.
+              Inference, confidence intervals, hypothesis tests and
+              sampling methods applied to the arboretum data.
             </p>
-        </div>
+          </div>
         </a>
 
         <a
@@ -353,16 +406,17 @@
           <span class="analysis-number">5</span>
 
           <div class="analysis-content">
-            <h3> Linear models and extensions </h3>
+            <h3>Linear models and extensions</h3>
 
             <p>
-              Regression; mixed-effects model (LMM); generalized linear 
-              models (GLM); diagnostics; model comparison
+              Regression, linear mixed-effects models (LMMs),
+              generalized linear models (GLMs), diagnostics and
+              model comparison.
             </p>
-        </div>
-      </a>
- 
-      <a
+          </div>
+        </a>
+
+        <a
           class="analysis-card"
           href="analysis/6_manuscript_code.html"
         >
@@ -379,74 +433,76 @@
         </a>
       </div>
     </section>
+
+    <section class="resources" aria-labelledby="resources-title">
+      <div class="section-heading">
+        <h2 id="resources-title">Additional resources</h2>
+
+        <p>
+          Access the dataset, variable definitions and complete
+          project repository.
+        </p>
+      </div>
+
+      <ul>
+        <li>
+          <a href="data/processed_data.csv" download>
+            Download the processed dataset
+          </a>
+        </li>
+
+        <li>
+          <a href="data/data_dictionary.csv" download>
+            Download the data dictionary
+          </a>
+        </li>
+
+        <li>
+          <a
+            href="https://github.com/jmalonso55/Applied-Statistics-for-a-Tropical-Arboretum"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            View the complete GitHub repository
+          </a>
+        </li>
+
+        <li>
+          <a
+            href="https://doi.org/10.5281/zenodo.22730213"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Access the archived version on Zenodo
+          </a>
+        </li>
+      </ul>
+    </section>
   </main>
 
-<section class="resources" aria-labelledby="resources-title">
-  <div class="section-heading">
-    <h2 id="resources-title">Additional resources</h2>
+  <footer>
+    <p>
+      Applied Statistics for a Tropical Arboretum · Jorge M. Alonso
+    </p>
 
     <p>
-      Access the dataset, variable definitions and complete project
-      repository.
-    </p>
-  </div>
-
-  <ul>
-    <li>
-      <a href="data/processed_data.csv" download>
-        Download the processed dataset
-      </a>
-    </li>
-
-    <li>
-      <a href="data/data_dictionary.csv" download>
-        Download the data dictionary
-      </a>
-    </li>
-
-    <li>
       <a
         href="https://github.com/jmalonso55/Applied-Statistics-for-a-Tropical-Arboretum"
         target="_blank"
         rel="noopener noreferrer"
       >
-        View the complete GitHub repository
+        GitHub
       </a>
-    </li>
-
-    <li>
-  <a
-    href="https://doi.org/10.5281/zenodo.22730213"
-    target="_blank"
-    rel="noopener noreferrer"
-  >
-    Access the archived version on Zenodo
-  </a>
-    </li>
-  </ul>
-</section>
-
-  
-  
-  <footer>
-   <footer>
-  <p>
-    Applied Statistics for a Tropical Arboretum · Jorge M. Alonso
-  </p>
-
-  <p>
-    <a
-      href="https://github.com/jmalonso55/Applied-Statistics-for-a-Tropical-Arboretum"
-    >
-      GitHub
-    </a>
-    ·
-    <a href="https://doi.org/10.5281/zenodo.22730213">
-      Zenodo
-    </a>
-    · Data and documents licensed under CC BY-NC 4.0
-  </p>
-</footer>
+      ·
+      <a
+        href="https://doi.org/10.5281/zenodo.22730213"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        Zenodo
+      </a>
+      · Data and documents licensed under CC BY-NC 4.0
+    </p>
   </footer>
 </body>
 </html>
